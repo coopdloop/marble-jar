@@ -293,6 +293,29 @@ func (s *Store) RecordDispatchResult(ctx context.Context, orgID, id string, p Di
 	return scanDispatch(row)
 }
 
+// ReplayDispatch resets a dispatch so it can be requeued. Terminal failures
+// (failed, dead_lettered) are always replayable; pending dispatches only once
+// they are stale — i.e. orphaned because no worker ever consumed them. A
+// running/retrying/succeeded dispatch cannot be replayed, which keeps replay
+// from double-executing in-flight work.
+func (s *Store) ReplayDispatch(ctx context.Context, orgID, id string, stalePendingBefore time.Time) (*Dispatch, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE dispatches SET
+			status = 'pending',
+			error_message = NULL,
+			response_payload = NULL,
+			attempt_count = 0,
+			dispatched_at = NULL,
+			updated_at = NOW()
+		WHERE organization_id = $1 AND id = $2
+		  AND (
+		    status IN ('failed', 'dead_lettered')
+		    OR (status = 'pending' AND attempt_count = 0 AND created_at < $3)
+		  )
+		RETURNING `+dispatchColumns, orgID, id, stalePendingBefore)
+	return scanDispatch(row)
+}
+
 // RecordIntegrationDetail writes the per-integration detail row (jira/teams/slack/webhook).
 func (s *Store) RecordIntegrationDetail(ctx context.Context, integration, dispatchID string, detail map[string]any) error {
 	switch integration {

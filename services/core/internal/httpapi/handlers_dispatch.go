@@ -87,6 +87,23 @@ func (s *Server) recordDispatchResult(c *gin.Context) {
 	c.JSON(http.StatusOK, d)
 }
 
+// POST /v1/dispatches/:dispatch_id/replay — requeue a stuck dispatch.
+func (s *Server) replayDispatch(c *gin.Context) {
+	if !requireScope(c, "dispatch:write") {
+		return
+	}
+	p := mustPrincipal(c)
+
+	d, err := s.dispatcher.Replay(c.Request.Context(), p, c.Param("dispatch_id"))
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
+	s.broadcast(c, "dispatch.updated", p.OrganizationID, d)
+	c.JSON(http.StatusAccepted, d)
+}
+
 // GET /v1/audit-log
 func (s *Server) listAudit(c *gin.Context) {
 	p := mustPrincipal(c)

@@ -62,14 +62,14 @@ export function LiveQueuePage() {
         ) : null}
       </div>
 
-      {/* Hero: the jar gets room to breathe. */}
-      <Card className="relative h-[380px] overflow-hidden">
+      {/* Hero: the jar stands on its own — no card chrome around it. */}
+      <div className="relative h-[420px]">
         {isLoading ? null : marbles.length === 0 ? (
           <EmptyJarState />
         ) : (
           <JarCanvas marbles={marbles} onMarbleClick={openMarble} className="h-full w-full" />
         )}
-      </Card>
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">

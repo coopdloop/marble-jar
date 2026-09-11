@@ -7,6 +7,7 @@ package dispatch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -168,6 +169,71 @@ func (s *Service) EvaluateAndDispatch(ctx context.Context, p *auth.Principal, m 
 		s.log.Info("rule fired", "rule", r.Name, "marble_id", m.ID, "target", r.TargetType)
 		s.metrics.RuleFired(r.TargetType)
 	}
+}
+
+// stalePendingThreshold is how old an unconsumed pending dispatch must be
+// before it counts as orphaned and becomes replayable.
+const stalePendingThreshold = 2 * time.Minute
+
+// Replay requeues a dispatch that failed permanently or was never consumed.
+// The intent is rebuilt from the request payload captured at creation, so a
+// replay retries exactly what was originally attempted.
+func (s *Service) Replay(ctx context.Context, p *auth.Principal, dispatchID string) (*store.Dispatch, error) {
+	d, err := s.store.ReplayDispatch(ctx, p.OrganizationID, dispatchID,
+		time.Now().UTC().Add(-stalePendingThreshold))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, fmt.Errorf("dispatch is not replayable (must be failed, dead_lettered, or an orphaned pending dispatch)")
+		}
+		return nil, err
+	}
+
+	// Unwrap the {target_config, payload} envelope written at creation.
+	var stored struct {
+		TargetConfig json.RawMessage `json:"target_config"`
+		Payload      json.RawMessage `json:"payload"`
+	}
+	_ = json.Unmarshal(d.RequestPayload, &stored)
+
+	intent := Intent{
+		DispatchID:      d.ID,
+		OrganizationID:  d.OrganizationID,
+		IntegrationType: d.IntegrationType,
+		Action:          d.Action,
+		MarbleID:        d.MarbleID,
+		ObjectiveID:     d.ObjectiveID,
+		RuleID:          d.DispatchRuleID,
+		ActingUserID:    d.ActingUserID,
+		TargetConfig:    orEmptyJSON(stored.TargetConfig),
+		Payload:         orEmptyJSON(stored.Payload),
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	ev, err := eventbus.NewEvent(eventbus.TopicDispatchIntent, p.OrganizationID, intent, s.hmacSecret)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.publisher.Publish(ctx, eventbus.TopicDispatchIntent, p.OrganizationID, ev); err != nil {
+		return nil, fmt.Errorf("requeue dispatch: %w", err)
+	}
+
+	s.metrics.DispatchQueued(d.IntegrationType)
+
+	if err := s.store.RecordAudit(ctx, store.AuditParams{
+		OrganizationID: p.OrganizationID,
+		ActingUserID:   p.ActingUserID(),
+		AgentIdentity:  agentIdentity(p),
+		Provider:       d.IntegrationType,
+		Action:         "dispatch.replayed:" + d.Action,
+		MarbleID:       d.MarbleID,
+		DispatchID:     &d.ID,
+		Details:        map[string]any{"replayed_by": string(p.Kind)},
+	}); err != nil {
+		s.log.Warn("audit replay failed", "dispatch_id", d.ID, "error", err)
+	}
+
+	s.log.Info("dispatch replayed", "dispatch_id", d.ID, "integration", d.IntegrationType)
+	return d, nil
 }
 
 // RecordResult applies a worker callback and closes the audit loop.

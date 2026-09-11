@@ -118,7 +118,7 @@ All routes are under `/v1` and accept either a session JWT or an `mj_` API key.
 | Marbles | `GET/PATCH/DELETE /marbles/:id`, `POST /marbles/:id/rollups`, `POST /marbles/:id/dispatch` |
 | Objectives | CRUD, `/objectives/:id/marbles/:marbleId`, `POST /objectives/:id/ship` |
 | Rules | CRUD + `POST /rules/test` (preview against recent marbles) |
-| Dispatch | `GET /dispatches`, `POST /dispatches/:id/result` |
+| Dispatch | `GET /dispatches`, `POST /dispatches/:id/result`, `POST /dispatches/:id/replay` |
 | Audit | `GET /audit-log` |
 | Analytics | `GET /trends/cost`, `/trends/tokens`, `/jar/status` |
 | Auth | `/register`, `/login`, `/token/refresh`, `/api-keys`, `/integrations/*` |
@@ -144,10 +144,16 @@ Supports `all`/`any`/`not`, fields like `project`, `model`, `agent`, `cost_usd`,
 ## Testing
 
 ```bash
-cd services/core && go test ./...      # rules engine + ingestion normalization
+cd services/core && go test ./...      # store integration suite (real Postgres),
+                                       # rules engine, ingestion normalization
 cd apps/web && npm run typecheck
 cd packages/sdk-ts && npm run typecheck
 ```
+
+Store tests create a throwaway database, apply the real embedded migrations,
+and run with org-level tenant isolation. They skip cleanly when no Postgres is
+reachable; point `MARBLEJAR_TEST_DATABASE_URL` at a specific instance to
+override the local default.
 
 Verified end-to-end against live infrastructure: registration → API key →
 ingestion (incl. idempotent replay) → Redpanda → rule match → dispatch worker →
@@ -160,7 +166,9 @@ HMAC-signed webhook → result callback → audit trail, plus the browser UI
 
 **Implemented**: ingestion + idempotency, live WebSocket jar, marbles/objectives/
 rules/dispatch/audit APIs, rollups and budget tracking, Ship It summaries, rules
-engine with preview, dispatch worker with retry/backoff/dead-lettering, Jira/
+engine with preview, dispatch worker with retry/backoff/dead-lettering and
+replay (`POST /v1/dispatches/:id/replay` resets failed/dead-lettered/stale-
+pending dispatches and republishes a signed intent), Jira/
 Slack/Teams/webhook executors, Prometheus metrics, TS SDK, both MCP servers,
 Phoenix trace links and reconciliation, full React UI.
 
@@ -171,4 +179,5 @@ Jira/Slack/Teams. Token exchange, storage and the OBO dispatch path are built;
 dispatch works today with no external setup.
 
 **Not yet built**: Helm charts / ArgoCD manifests, the Python SDK package (the
-MCP bridge covers Python agents), and dead-letter replay endpoints.
+MCP bridge covers Python agents), and dead-letter retention policies (replayed
+forever vs. expiring).

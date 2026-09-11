@@ -123,6 +123,7 @@ func (s *Server) Router() *gin.Engine {
 		api.GET("/dispatches", s.listDispatches)
 		api.GET("/dispatches/:dispatch_id", s.getDispatch)
 		api.POST("/dispatches/:dispatch_id/result", s.recordDispatchResult)
+		api.POST("/dispatches/:dispatch_id/replay", s.replayDispatch)
 
 		// Audit + trends.
 		api.GET("/audit-log", s.listAudit)

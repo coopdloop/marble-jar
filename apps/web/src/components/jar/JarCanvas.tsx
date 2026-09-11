@@ -26,6 +26,7 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
   const renderRef = useRef<Matter.Render | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
   const bodyMarbleIds = useRef<Map<number, string>>(new Map());
+  const bodyStyles = useRef<Map<number, MarbleStyle>>(new Map());
   const droppedIds = useRef<Set<string>>(new Set());
   const seeded = useRef(false);
 
@@ -108,6 +109,18 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
 
     Matter.Composite.add(engine.world, [floor, leftWall, rightWall]);
 
+    // Marbles are drawn as lit spheres (gradient + specular) after each frame.
+    const drawStyledMarbles = () => {
+      const ctx = render.context;
+      for (const body of Matter.Composite.allBodies(engine.world)) {
+        if (body.isStatic) continue;
+        const style = bodyStyles.current.get(body.id);
+        if (!style) continue;
+        drawMarble(ctx, body.position.x, body.position.y, style.radius, style.color, style.glow);
+      }
+    };
+    Matter.Events.on(render, "afterRender", drawStyledMarbles);
+
     const runner = Matter.Runner.create();
     runnerRef.current = runner;
     Matter.Runner.run(runner, engine);
@@ -154,12 +167,14 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
     return () => {
       resizeObserver.disconnect();
       render.canvas.removeEventListener("click", handleClick);
+      Matter.Events.off(render, "afterRender", drawStyledMarbles);
       Matter.Render.stop(render);
       Matter.Runner.stop(runner);
       Matter.Composite.clear(engine.world, false);
       Matter.Engine.clear(engine);
       render.canvas.remove();
       bodyMarbleIds.current.clear();
+      bodyStyles.current.clear();
       droppedIds.current.clear();
       engineRef.current = null;
       renderRef.current = null;
@@ -196,14 +211,11 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
       friction: 0.12,
       frictionAir: 0.008,
       density: 0.0014,
-      render: {
-        fillStyle: color,
-        strokeStyle: glow ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.25)",
-        lineWidth: glow ? 2.5 : 1,
-      },
+      render: { fillStyle: color },
     });
 
     bodyMarbleIds.current.set(body.id, marble.id);
+    bodyStyles.current.set(body.id, { color, glow, radius });
     Matter.Composite.add(engine.world, body);
 
     if (import.meta.env.DEV) {
@@ -218,6 +230,7 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
       const excess = circles.slice(0, circles.length - MAX_BODIES);
       for (const old of excess) {
         bodyMarbleIds.current.delete(old.id);
+        bodyStyles.current.delete(old.id);
         Matter.Composite.remove(engine.world, old);
       }
     }
@@ -267,18 +280,83 @@ interface JarGeom {
   jarBottom: number;
 }
 
-/** Decorative frosted-glass jar silhouette. */
+interface MarbleStyle {
+  color: string;
+  glow: boolean;
+  radius: number;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** amount >= 0 lightens toward white, < 0 darkens toward black. */
+function tint(hex: string, amount: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const target = amount >= 0 ? 255 : 0;
+  const t = Math.abs(amount);
+  const ch = (c: number) => Math.round(c + (target - c) * t);
+  return `rgb(${ch(r)}, ${ch(g)}, ${ch(b)})`;
+}
+
+function rgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function drawMarble(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  color: string,
+  glow: boolean,
+) {
+  ctx.save();
+
+  if (glow) {
+    const halo = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 2.4);
+    halo.addColorStop(0, rgba(color, 0.35));
+    halo.addColorStop(1, rgba(color, 0));
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const grad = ctx.createRadialGradient(x - r * 0.4, y - r * 0.45, r * 0.1, x, y, r);
+  grad.addColorStop(0, tint(color, 0.5));
+  grad.addColorStop(0.75, color);
+  grad.addColorStop(1, tint(color, -0.3));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.beginPath();
+  ctx.arc(x - r * 0.38, y - r * 0.42, r * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/** Minimal hairline jar silhouette — just enough to read as a vessel. */
 function JarChrome() {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-6">
       <div
-        className="relative rounded-b-[2.5rem] rounded-t-xl border border-white/15 bg-gradient-to-b from-white/[0.07] to-white/[0.02] backdrop-blur-[2px]"
-        style={{ width: "min(55%, 420px)", height: "min(80%, 360px)" }}
+        className="relative overflow-hidden rounded-b-[3rem] rounded-t-lg border border-white/10"
+        style={{
+          width: "min(55%, 420px)",
+          height: "min(80%, 360px)",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.03), transparent 40%)",
+        }}
       >
-        {/* Rim highlight */}
-        <div className="absolute inset-x-3 top-0 h-1 rounded-full bg-white/25" />
-        {/* Vertical specular highlight */}
-        <div className="absolute left-5 top-6 h-2/3 w-8 rounded-full bg-gradient-to-b from-white/20 to-transparent blur-md" />
+        <div className="absolute inset-x-2 top-px h-px bg-white/15" />
+        {/* Grounding shadow so the pile sits on glass, not on void. */}
+        <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-b from-transparent to-black/25" />
       </div>
     </div>
   );
@@ -287,21 +365,20 @@ function JarChrome() {
 /** Inviting zero state — an empty jar should look like a promise, not a bug. */
 export function EmptyJarState() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+    <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
       <div className="relative">
-        <div className="absolute inset-0 animate-jar-pulse rounded-full bg-primary/20 blur-2xl" />
+        <div className="absolute inset-0 animate-jar-pulse rounded-full bg-primary/10 blur-2xl" />
         <div
-          className="relative rounded-b-[2rem] rounded-t-lg border border-white/15 bg-white/[0.04] backdrop-blur-sm"
-          style={{ width: 140, height: 170 }}
+          className="relative rounded-b-[2.25rem] rounded-t-md border border-white/10 bg-white/[0.02]"
+          style={{ width: 140, height: 180 }}
         >
-          <div className="absolute inset-x-3 top-0 h-1 rounded-full bg-white/25" />
+          <div className="absolute inset-x-2 top-px h-px bg-white/15" />
         </div>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <p className="text-sm font-medium">Waiting for your first marble</p>
         <p className="max-w-xs text-xs text-muted-foreground">
-          Point an agent at the SDK, MCP server or webhook and completed work will start
-          dropping in here.
+          Completed work drops in here as soon as your agents report back.
         </p>
       </div>
     </div>
