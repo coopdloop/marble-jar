@@ -26,6 +26,7 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
   const renderRef = useRef<Matter.Render | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
   const bodyMarbleIds = useRef<Map<number, string>>(new Map());
+  const droppedIds = useRef<Set<string>>(new Set());
   const seeded = useRef(false);
 
   const [reduceMotion] = useState(
@@ -159,6 +160,7 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
       Matter.Engine.clear(engine);
       render.canvas.remove();
       bodyMarbleIds.current.clear();
+      droppedIds.current.clear();
       engineRef.current = null;
       renderRef.current = null;
       runnerRef.current = null;
@@ -169,6 +171,10 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
   const dropMarble = (marble: Marble, instant = false) => {
     const engine = engineRef.current;
     if (!engine) return;
+
+    // One marble, one physical body — ever.
+    if (droppedIds.current.has(marble.id)) return;
+    droppedIds.current.add(marble.id);
 
     const geom = (engine as unknown as { jarGeom?: JarGeom }).jarGeom;
     if (!geom) return;
@@ -199,6 +205,12 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
 
     bodyMarbleIds.current.set(body.id, marble.id);
     Matter.Composite.add(engine.world, body);
+
+    if (import.meta.env.DEV) {
+      // Dev-only instrumentation used by UI tests to assert exactly-once drops.
+      const w = window as unknown as { __mjDropped?: number };
+      w.__mjDropped = (w.__mjDropped ?? 0) + 1;
+    }
 
     // Evict the oldest marbles so the simulation stays bounded.
     const circles = Matter.Composite.allBodies(engine.world).filter((b) => !b.isStatic);

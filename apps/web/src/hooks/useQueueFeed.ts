@@ -19,10 +19,13 @@ export function useQueueFeed(): void {
   const socketRef = useRef<WebSocket | null>(null);
   const attemptRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const closedRef = useRef(false);
 
   useEffect(() => {
-    closedRef.current = false;
+    // Effect-local closure state, deliberately NOT a ref: React StrictMode
+    // double-mounts effects, and a shared ref would let the first socket's
+    // async onclose fire after the second effect ran, spawning a duplicate
+    // connection (every event would then be delivered twice).
+    let closed = false;
 
     const handleEvent = (event: QueueEvent) => {
       switch (event.type) {
@@ -89,7 +92,7 @@ export function useQueueFeed(): void {
     };
 
     const connect = () => {
-      if (closedRef.current) return;
+      if (closed) return;
 
       const token = loadTokens()?.access_token;
       if (!token) {
@@ -111,12 +114,17 @@ export function useQueueFeed(): void {
       }
       socketRef.current = socket;
 
+      // Only react to events from the socket this effect still owns.
+      const isCurrent = () => !closed && socketRef.current === socket;
+
       socket.onopen = () => {
+        if (!isCurrent()) return;
         attemptRef.current = 0;
         setWsStatus("connected");
       };
 
       socket.onmessage = (ev) => {
+        if (!isCurrent()) return;
         try {
           handleEvent(JSON.parse(ev.data) as QueueEvent);
         } catch {
@@ -129,8 +137,8 @@ export function useQueueFeed(): void {
       };
 
       socket.onclose = () => {
+        if (!isCurrent()) return;
         socketRef.current = null;
-        if (closedRef.current) return;
         scheduleReconnect();
       };
     };
@@ -148,10 +156,19 @@ export function useQueueFeed(): void {
     connect();
 
     return () => {
-      closedRef.current = true;
+      closed = true;
       if (timerRef.current) clearTimeout(timerRef.current);
-      socketRef.current?.close();
+      const socket = socketRef.current;
       socketRef.current = null;
+      if (socket) {
+        // Null the handlers so a late onclose from this orphaned socket can
+        // never schedule a reconnect on behalf of the next effect instance.
+        socket.onclose = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onopen = null;
+        socket.close();
+      }
     };
   }, [queryClient, setWsStatus, enqueueMarble]);
 }

@@ -104,8 +104,12 @@ export const useUiStore = create<UiSlice>()(
 
       jarQueue: [],
       enqueueMarble: (m) => {
+        // Defensive dedup: the same marble must never be queued for the jar
+        // animation twice (e.g. if a duplicate socket event arrives).
+        const { jarQueue } = get();
+        if (jarQueue.some((q) => q.id === m.id)) return;
         // Bound the queue so a burst of agent activity cannot grow it forever.
-        const next = [...get().jarQueue, m];
+        const next = [...jarQueue, m];
         set({ jarQueue: next.length > 50 ? next.slice(-50) : next });
       },
       dequeueMarble: () => {
