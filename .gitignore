@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+.env
+.env.local
+*.local
+
+.DS_Store
+.idea/
+.vscode/
+
+# Go
+/services/core/server
+/services/core/worker
+
+.pi/tasks/

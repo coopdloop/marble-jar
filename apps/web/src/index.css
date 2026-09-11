@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 30% 97%;
+    --foreground: 222 25% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 25% 12%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 20% 92%;
+    --secondary-foreground: 222 25% 18%;
+    --muted: 40 16% 93%;
+    --muted-foreground: 222 10% 42%;
+    --accent: 262 83% 58%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+    --border: 40 15% 87%;
+    --input: 40 15% 87%;
+    --ring: 199 89% 48%;
+    --radius: 0.75rem;
+  }
+
+  /* Dark mode is first-class: this lives on a TV in an eng bullpen. */
+  .dark {
+    --background: 222 24% 8%;
+    --foreground: 40 25% 96%;
+    --card: 222 22% 11%;
+    --card-foreground: 40 25% 96%;
+    --primary: 199 89% 55%;
+    --primary-foreground: 222 24% 8%;
+    --secondary: 222 18% 16%;
+    --secondary-foreground: 40 25% 96%;
+    --muted: 222 18% 15%;
+    --muted-foreground: 220 12% 62%;
+    --accent: 262 83% 66%;
+    --accent-foreground: 222 24% 8%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 65% 52%;
+    --warning: 38 92% 58%;
+    --border: 222 16% 20%;
+    --input: 222 16% 20%;
+    --ring: 199 89% 55%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Subtle ambient gradient so the jar has atmosphere to sit in. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 40rem at 70% -10%, hsl(var(--primary) / 0.08), transparent 60%),
+      radial-gradient(50rem 35rem at 10% 110%, hsl(var(--accent) / 0.07), transparent 60%);
+  }
+}
+
+@layer components {
+  /* Frosted glass jar-card motif used across the app. */
+  .glass {
+    @apply border border-white/10 bg-card/70 backdrop-blur-xl;
+    box-shadow:
+      0 1px 0 0 hsl(0 0% 100% / 0.06) inset,
+      0 18px 40px -24px hsl(222 40% 4% / 0.6);
+  }
+
+  .glass-hover {
+    @apply transition-all duration-200;
+  }
+  .glass-hover:hover {
+    @apply border-white/20 bg-card/85;
+    box-shadow:
+      0 1px 0 0 hsl(0 0% 100% / 0.1) inset,
+      0 22px 48px -22px hsl(222 40% 4% / 0.75);
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-muted/60;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full;
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.07), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+
+  .numeric {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Scrollbars that match the dark, tactile feel. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-muted-foreground/25;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/40;
+}

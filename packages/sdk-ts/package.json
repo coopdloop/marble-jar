@@ -1,0 +1,27 @@
+{
+  "name": "@marble-jar/client",
+  "version": "0.1.0",
+  "description": "TypeScript client for Marble Jar — log agent work as marbles, watch the jar fill in real time.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --experimental-strip-types test/*.test.ts"
+  },
+  "keywords": ["agents", "observability", "llm", "marble-jar"],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

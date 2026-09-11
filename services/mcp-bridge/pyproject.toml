@@ -1,0 +1,33 @@
+[project]
+name = "marble-jar-mcp-bridge"
+version = "0.1.0"
+description = "Marble Jar MCP servers (log_marble + monitor) and the Phoenix/OpenInference trace bridge."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.2.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.9.0",
+]
+
+[project.optional-dependencies]
+phoenix = [
+    "arize-phoenix-otel>=0.6.0",
+    "openinference-instrumentation>=0.1.0",
+    "opentelemetry-sdk>=1.28.0",
+]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0", "respx>=0.21.0"]
+
+[project.scripts]
+marble-jar-mcp = "marble_jar_mcp.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["marble_jar_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

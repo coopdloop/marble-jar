@@ -1,0 +1,126 @@
+name: marble-jar
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: marblejar
+      POSTGRES_PASSWORD: marblejar
+      POSTGRES_DB: marblejar
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marblejar -d marblejar"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    environment:
+      PHOENIX_WORKING_DIR: /mnt/data
+    volumes:
+      - phoenixdata:/mnt/data
+
+  core:
+    build:
+      context: ./services/core
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://marblejar:marblejar@postgres:5432/marblejar?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      REDPANDA_BROKERS: redpanda:29092
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-signing-key-at-least-32-bytes-long!}
+      HMAC_DISPATCH_SECRET: ${HMAC_DISPATCH_SECRET:-dev-dispatch-secret-change-me}
+      PHOENIX_BASE_URL: http://phoenix:6006
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      LOG_LEVEL: info
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+
+  dispatch-worker:
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile.worker
+    depends_on:
+      - core
+      - redpanda
+    environment:
+      DATABASE_URL: postgres://marblejar:marblejar@postgres:5432/marblejar?sslmode=disable
+      REDPANDA_BROKERS: redpanda:29092
+      CORE_API_BASE_URL: http://core:8080
+      CORE_SERVICE_TOKEN: ${CORE_SERVICE_TOKEN:-set-me-to-an-mj-api-key}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-signing-key-at-least-32-bytes-long!}
+      HMAC_DISPATCH_SECRET: ${HMAC_DISPATCH_SECRET:-dev-dispatch-secret-change-me}
+      DISPATCH_WORKER_CONCURRENCY: "4"
+      WORKER_PORT: "8081"
+    ports:
+      - "8081:8081"
+
+  mcp-bridge:
+    build:
+      context: ./services/mcp-bridge
+    depends_on:
+      - core
+    environment:
+      CORE_API_BASE_URL: http://core:8080
+      PHOENIX_BASE_URL: http://phoenix:6006
+      CORE_SERVICE_TOKEN: ${CORE_SERVICE_TOKEN:-set-me-to-an-mj-api-key}
+      MCP_SERVER_PORT: "8090"
+    ports:
+      - "8090:8090"
+
+  web:
+    build:
+      context: ./apps/web
+    depends_on:
+      - core
+    environment:
+      VITE_API_BASE_URL: http://localhost:8080
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:
+  phoenixdata:
