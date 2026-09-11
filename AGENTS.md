@@ -42,8 +42,9 @@ super-commit commit \
   --yes
 ```
 
-`--subject` must be a complete summary sentence in imperative mood
-(e.g. "Add OBO token exchange fallback"), no trailing period.
+`--subject` must be a complete summary sentence in imperative mood, starting
+lowercase (e.g. "add OBO token exchange fallback"), no trailing period. The
+linter rejects uppercase starts.
 
 ### Pushing
 
