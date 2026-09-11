@@ -1,6 +1,20 @@
-# Marble Jar
+<div align="center">
 
-> Every finished task, a marble in the jar. Every jar, a story you can tell your team.
+<img src="./docs/assets/marbles-hero.jpg" alt="A jar of multicolored glass marbles" width="100%">
+
+# 🫙 Marble Jar
+
+**Every finished task, a marble in the jar.
+Every jar, a story you can tell your team.**
+
+[![Go](https://img.shields.io/badge/go-modular%20monolith-00ADD8?style=flat-square&logo=go&logoColor=white)](./services/core)
+[![React](https://img.shields.io/badge/react-live%20physics%20jar-61DAFB?style=flat-square&logo=react&logoColor=black)](./apps/web)
+[![Python](https://img.shields.io/badge/python-MCP%20bridge-3776AB?style=flat-square&logo=python&logoColor=white)](./services/mcp-bridge)
+[![Docs](https://img.shields.io/badge/docs-guided%20tour-F9AB00?style=flat-square)](./docs/index.md)
+
+<sub>Photo: <a href="https://unsplash.com/photos/zI4QBLcI60E">Baibhav Kumar</a> on Unsplash</sub>
+
+</div>
 
 Marble Jar is the missing middle layer between agent observability and team
 communication. Agents report each completed unit of work as a **marble** via
@@ -11,9 +25,16 @@ auditable.
 
 Built from [`product.json`](./product.json).
 
+📚 **Docs:** [`/docs`](./docs/index.md) — also rendered in-app at `/docs`,
+including an interactive guided tour. Key pages:
+[getting started](./docs/getting-started.md) ·
+[integrations & OBO](./docs/integrations.md) (`OAUTH_ISSUER_URL` and friends) ·
+[configuration](./docs/configuration.md) ·
+[API reference](./docs/api.md).
+
 ---
 
-## Quick start
+## 🚀 Quick start
 
 ```bash
 # 1. Infrastructure (Postgres+Timescale, Redis, Redpanda, Phoenix)
@@ -43,7 +64,7 @@ curl -X POST http://localhost:8080/v1/marbles \
   -d '{"summary":"Refactored the auth module","model":"claude-sonnet-4","project":"payments-api","cost_usd":0.42,"tokens":{"in":12000,"out":3000}}'
 ```
 
-It drops into the jar in real time.
+It drops into the jar in real time. ✨
 
 ### Dispatch worker and MCP bridge
 
@@ -62,7 +83,7 @@ Or bring the whole stack up with `docker compose up -d`.
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
    agents (Claude Code, Cursor, LangGraph, …)
@@ -108,7 +129,7 @@ Or bring the whole stack up with `docker compose up -d`.
 
 ---
 
-## API
+## 🔌 API
 
 All routes are under `/v1` and accept either a session JWT or an `mj_` API key.
 
@@ -141,7 +162,7 @@ Supports `all`/`any`/`not`, fields like `project`, `model`, `agent`, `cost_usd`,
 
 ---
 
-## Testing
+## 🧪 Testing
 
 ```bash
 cd services/core && go test ./...      # store integration suite (real Postgres),
@@ -162,22 +183,33 @@ HMAC-signed webhook → result callback → audit trail, plus the browser UI
 
 ---
 
-## Status
+## 🚦 Status
 
-**Implemented**: ingestion + idempotency, live WebSocket jar, marbles/objectives/
-rules/dispatch/audit APIs, rollups and budget tracking, Ship It summaries, rules
-engine with preview, dispatch worker with retry/backoff/dead-lettering and
-replay (`POST /v1/dispatches/:id/replay` resets failed/dead-lettered/stale-
-pending dispatches and republishes a signed intent), Jira/
-Slack/Teams/webhook executors, Prometheus metrics, TS SDK, both MCP servers,
-Phoenix trace links and reconciliation, full React UI.
+✅ **Implemented**: ingestion + idempotency, live WebSocket jar,
+marbles/objectives/rules/dispatch/audit APIs, rollups and budget tracking,
+Ship It summaries, rules engine with preview, dispatch worker with
+retry/backoff/dead-lettering and replay (`POST /v1/dispatches/:id/replay`
+resets failed/dead-lettered/stale-pending dispatches and republishes a signed
+intent), Jira/Slack/Teams/webhook executors, Prometheus metrics, TS SDK, both
+MCP servers, Phoenix trace links and reconciliation, full React UI.
 
-**Stubbed pending credentials**: the OAuth *authorization-code callback* for
-Jira/Slack/Teams. Token exchange, storage and the OBO dispatch path are built;
-`POST /v1/integrations/:provider/connect` returns `501` with a clear hint until
-`OAUTH_ISSUER_URL` and per-provider client credentials are configured. Webhook
-dispatch works today with no external setup.
+🔑 **Pending only credentials**: the OBO connect flow is built end-to-end —
+provider-native OAuth (`POST /v1/integrations/:provider/connect` → provider
+consent → `/v1/integrations/:provider/callback` → token storage) with
+connection-first dispatch, falling back to an RFC 8693 broker exchange when
+`OAUTH_ISSUER_URL` is set (note: Ory Hydra does **not** implement the exchange
+grant; use Auth0/Keycloak for the broker path, or rely on stored connections).
+Each provider needs its OAuth app credentials (`SLACK_OAUTH_CLIENT_ID/SECRET`
+etc.), otherwise Connect returns `501` with a hint. Webhook dispatch works
+with no external setup.
 
-**Not yet built**: Helm charts / ArgoCD manifests, the Python SDK package (the
-MCP bridge covers Python agents), and dead-letter retention policies (replayed
-forever vs. expiring).
+🗺️ **Not yet built**: Helm charts / ArgoCD manifests, the Python SDK package
+(the MCP bridge covers Python agents), and dead-letter retention policies
+(replayed forever vs. expiring).
+
+<div align="center">
+
+---
+
+🫙 *Watch the jar fill up.*
+</div>
