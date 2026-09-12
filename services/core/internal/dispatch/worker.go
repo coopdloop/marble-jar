@@ -102,20 +102,23 @@ func (w *Worker) Submit(ctx context.Context, ev interface {
 	GetSignature() string
 }) error {
 	payload := ev.GetPayload()
+	// Signature, decode and routing failures are permanent — the message will
+	// never become valid, so callers should commit past it rather than
+	// redeliver forever.
 	if w.cfg.HMACSecret != "" && ev.GetSignature() != "" {
 		if !verifyHMAC(payload, ev.GetSignature(), w.cfg.HMACSecret) {
-			return fmt.Errorf("dispatch intent failed signature verification")
+			return PermanentError{fmt.Errorf("dispatch intent failed signature verification")}
 		}
 	}
 
 	var intent Intent
 	if err := json.Unmarshal(payload, &intent); err != nil {
-		return fmt.Errorf("decode intent: %w", err)
+		return PermanentError{fmt.Errorf("decode intent: %w", err)}
 	}
 
 	q, ok := w.queues[intent.IntegrationType]
 	if !ok {
-		return fmt.Errorf("no executor for integration %q", intent.IntegrationType)
+		return PermanentError{fmt.Errorf("no executor for integration %q", intent.IntegrationType)}
 	}
 
 	select {

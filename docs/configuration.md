@@ -1,0 +1,67 @@
+# Configuration
+
+Everything is environment-driven; `env.example` at the repo root is the
+canonical template. `DEV_MODE=true` relaxes secret-strength checks and enables
+in-process fallbacks so a laptop needs only Postgres.
+
+## Core API + dispatch worker (`services/core`)
+
+| Variable | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | ✔ | — | Postgres DSN (alias `POSTGRES_DSN`). |
+| `JWT_SIGNING_KEY` | ✔* | — | ≥ 32 bytes outside `DEV_MODE`. Signs session JWTs. |
+| `HMAC_DISPATCH_SECRET` | ✔* | — | Signs outbound webhook intents. |
+| `PORT` | | `8080` | API listen port. |
+| `REDIS_URL` | | — | Live-jar pub/sub. In-process bus when unset. |
+| `REDPANDA_BROKERS` | | — | Comma-separated. Durable dispatch log; in-process when unset. |
+| `LOG_LEVEL` | | `info` | `debug` for noisy dev. |
+| `CORS_ORIGINS` | | `http://localhost:5173` | Comma-separated allowed origins. |
+| `ACCESS_TOKEN_TTL` | | `1h` | Go duration, e.g. `30m`. |
+| `REFRESH_TOKEN_TTL` | | `720h` | |
+| `PHOENIX_BASE_URL` | | — | Arize Phoenix; enables trace deep links. |
+| `PHOENIX_API_KEY` | | — | |
+| `DEV_MODE` | | `false` | Relaxes the ✔* requirements. Do not ship. |
+
+## OBO / OAuth (see [Integrations & OBO](./integrations.md))
+
+| Variable | Notes |
+| --- | --- |
+| `PUBLIC_API_BASE_URL` | Where providers redirect after consent. Default `http://localhost:PORT`. |
+| `WEB_APP_URL` | Where the OAuth callback lands the user. Default `http://localhost:5173`. |
+| `SLACK_OAUTH_CLIENT_ID` / `SLACK_OAUTH_CLIENT_SECRET` | Slack app (user scope `chat:write`). |
+| `ATLASSIAN_OAUTH_CLIENT_ID` / `ATLASSIAN_OAUTH_CLIENT_SECRET` | Jira OAuth app. |
+| `ENTRA_ID_TENANT_ID` / `ENTRA_ID_CLIENT_ID` / `ENTRA_ID_CLIENT_SECRET` | Teams via Microsoft Entra ID. |
+| `OAUTH_ISSUER_URL` | Optional RFC 8693 fallback broker (Auth0/Keycloak — **Hydra does not implement the exchange grant**). Alias `HYDRA_ISSUER_URL`. |
+| `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` | Client at the broker. Aliases `HYDRA_CLIENT_ID` / `HYDRA_CLIENT_SECRET`. |
+| `HYDRA_SECRETS_SYSTEM` | The Hydra container's own secret (docker compose). |
+
+## Dispatch worker only
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `CORE_API_BASE_URL` | `http://localhost:8080` | Where the worker reports results. |
+| `CORE_SERVICE_TOKEN` | — | An `mj_` API key with `dispatch:write` scope. |
+| `DISPATCH_WORKER_CONCURRENCY` | `4` | Parallel executions. |
+| `WORKER_PORT` | `8081` | Health endpoint. |
+
+## MCP bridge (`services/mcp-bridge`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `CORE_API_BASE_URL` | `http://localhost:8080` | |
+| `CORE_SERVICE_TOKEN` | — | **Required.** `mj_` key used for all agent writes. |
+| `MCP_SERVER_PORT` | `8090` | |
+| `PHOENIX_BASE_URL` / `PHOENIX_API_KEY` | — | Optional trace links. |
+
+## Web (`apps/web`)
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | `http://localhost:8080` | Baked in at build time. |
+
+## Graceful degradation
+
+Without Redis/Redpanda the stack uses in-process transports — fine for a
+laptop, not for multiple replicas. Without Phoenix, trace links simply don't
+render. Without the OAuth issuer, Jira/Slack/Teams connect returns `501` with
+a hint, and webhook dispatches keep working.

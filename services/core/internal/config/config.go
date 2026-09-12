@@ -21,11 +21,23 @@ type Config struct {
 	OAuthIssuerURL     string
 	OAuthClientID      string
 	OAuthClientSecret  string
-	LogLevel           string
-	CORSOrigins        []string
-	AccessTokenTTL     time.Duration
-	RefreshTokenTTL    time.Duration
-	DispatchWorkers    int
+	// Per-provider OAuth apps used by the integration connect flow.
+	SlackClientID         string
+	SlackClientSecret     string
+	AtlassianClientID     string
+	AtlassianClientSecret string
+	EntraTenantID         string
+	EntraClientID         string
+	EntraClientSecret     string
+	// PublicURL is where browsers can reach this API (OAuth redirect_uri base).
+	PublicURL string
+	// WebAppURL is where the OAuth callback redirects the user afterwards.
+	WebAppURL       string
+	LogLevel        string
+	CORSOrigins     []string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
+	DispatchWorkers int
 	// DevMode relaxes secret-strength checks and enables the in-memory event bus
 	// when Redpanda/Redis are not configured.
 	DevMode bool
@@ -33,24 +45,39 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-		Port:               env("PORT", "8080"),
-		DatabaseURL:        env("DATABASE_URL", env("POSTGRES_DSN", "")),
-		RedisURL:           env("REDIS_URL", ""),
-		RedpandaBrokers:    splitList(env("REDPANDA_BROKERS", "")),
-		JWTSigningKey:      env("JWT_SIGNING_KEY", ""),
-		HMACDispatchSecret: env("HMAC_DISPATCH_SECRET", ""),
-		PhoenixBaseURL:     strings.TrimRight(env("PHOENIX_BASE_URL", ""), "/"),
-		OAuthIssuerURL:     env("OAUTH_ISSUER_URL", env("HYDRA_ISSUER_URL", "")),
-		OAuthClientID:      env("OAUTH_CLIENT_ID", env("HYDRA_CLIENT_ID", "")),
-		OAuthClientSecret:  env("OAUTH_CLIENT_SECRET", env("HYDRA_CLIENT_SECRET", "")),
-		LogLevel:           env("LOG_LEVEL", "info"),
-		CORSOrigins:        splitList(env("CORS_ORIGINS", "http://localhost:5173")),
-		AccessTokenTTL:     envDuration("ACCESS_TOKEN_TTL", time.Hour),
-		RefreshTokenTTL:    envDuration("REFRESH_TOKEN_TTL", 720*time.Hour),
-		DispatchWorkers:    envInt("DISPATCH_WORKER_CONCURRENCY", 4),
-		DevMode:            envBool("DEV_MODE", false),
+		Port:                  env("PORT", "8080"),
+		PublicURL:             strings.TrimRight(env("PUBLIC_API_BASE_URL", ""), "/"),
+		WebAppURL:             strings.TrimRight(env("WEB_APP_URL", ""), "/"),
+		DatabaseURL:           env("DATABASE_URL", env("POSTGRES_DSN", "")),
+		RedisURL:              env("REDIS_URL", ""),
+		RedpandaBrokers:       splitList(env("REDPANDA_BROKERS", "")),
+		JWTSigningKey:         env("JWT_SIGNING_KEY", ""),
+		HMACDispatchSecret:    env("HMAC_DISPATCH_SECRET", ""),
+		PhoenixBaseURL:        strings.TrimRight(env("PHOENIX_BASE_URL", ""), "/"),
+		OAuthIssuerURL:        env("OAUTH_ISSUER_URL", env("HYDRA_ISSUER_URL", "")),
+		OAuthClientID:         env("OAUTH_CLIENT_ID", env("HYDRA_CLIENT_ID", "")),
+		OAuthClientSecret:     env("OAUTH_CLIENT_SECRET", env("HYDRA_CLIENT_SECRET", "")),
+		SlackClientID:         env("SLACK_OAUTH_CLIENT_ID", ""),
+		SlackClientSecret:     env("SLACK_OAUTH_CLIENT_SECRET", ""),
+		AtlassianClientID:     env("ATLASSIAN_OAUTH_CLIENT_ID", ""),
+		AtlassianClientSecret: env("ATLASSIAN_OAUTH_CLIENT_SECRET", ""),
+		EntraTenantID:         env("ENTRA_ID_TENANT_ID", ""),
+		EntraClientID:         env("ENTRA_ID_CLIENT_ID", ""),
+		EntraClientSecret:     env("ENTRA_ID_CLIENT_SECRET", ""),
+		LogLevel:              env("LOG_LEVEL", "info"),
+		CORSOrigins:           splitList(env("CORS_ORIGINS", "http://localhost:5173")),
+		AccessTokenTTL:        envDuration("ACCESS_TOKEN_TTL", time.Hour),
+		RefreshTokenTTL:       envDuration("REFRESH_TOKEN_TTL", 720*time.Hour),
+		DispatchWorkers:       envInt("DISPATCH_WORKER_CONCURRENCY", 4),
+		DevMode:               envBool("DEV_MODE", false),
 	}
 
+	if c.PublicURL == "" {
+		c.PublicURL = "http://localhost:" + c.Port
+	}
+	if c.WebAppURL == "" {
+		c.WebAppURL = "http://localhost:5173"
+	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL (or POSTGRES_DSN) is required")
 	}

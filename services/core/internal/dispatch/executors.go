@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -244,9 +245,16 @@ func adf(text string) map[string]any {
 
 // ---------- Slack ----------
 
-type SlackExecutor struct{ client *http.Client }
+type SlackExecutor struct {
+	client *http.Client
 
-func NewSlackExecutor() *SlackExecutor { return &SlackExecutor{client: newClient()} }
+	mu        sync.Mutex
+	channelID map[string]string // channel name → id, cached per process
+}
+
+func NewSlackExecutor() *SlackExecutor {
+	return &SlackExecutor{client: newClient(), channelID: map[string]string{}}
+}
 
 type slackConfig struct {
 	Channel    string `json:"channel"`
@@ -281,7 +289,18 @@ func (e *SlackExecutor) Execute(ctx context.Context, in Intent, token string) (s
 		return "", nil, PermanentError{fmt.Errorf("slack target_config requires channel or webhook_url")}
 	}
 
-	req := map[string]any{"channel": cfg.Channel, "text": p.text()}
+	// chat.postMessage wants a channel ID; humans type "#name". Resolve via
+	// conversations.list (channels:read) and cache it.
+	channel := cfg.Channel
+	if strings.HasPrefix(channel, "#") {
+		id, err := e.resolveChannelID(ctx, token, strings.TrimPrefix(channel, "#"))
+		if err != nil {
+			return "", nil, err
+		}
+		channel = id
+	}
+
+	req := map[string]any{"channel": channel, "text": p.text()}
 	if cfg.ThreadTS != "" {
 		req["thread_ts"] = cfg.ThreadTS
 	}
@@ -312,6 +331,74 @@ func (e *SlackExecutor) Execute(ctx context.Context, in Intent, token string) (s
 		return "", nil, PermanentError{fmt.Errorf("slack: %s", res.Error)}
 	}
 	return res.TS, map[string]any{"channel_id": res.Channel, "message_ts": res.TS}, nil
+}
+
+func (e *SlackExecutor) resolveChannelID(ctx context.Context, token, name string) (string, error) {
+	e.mu.Lock()
+	if id, ok := e.channelID[name]; ok {
+		e.mu.Unlock()
+		return id, nil
+	}
+	e.mu.Unlock()
+
+	cursor := ""
+	types := "public_channel,private_channel"
+	for page := 0; page < 10; page++ {
+		u := "https://slack.com/api/conversations.list?limit=200&types=" + types
+		if cursor != "" {
+			u += "&cursor=" + cursor
+		}
+		status, body, err := doJSON(ctx, e.client, http.MethodGet, u, token, nil, nil)
+		if err != nil {
+			return "", err
+		}
+		if err := classify(status, body); err != nil {
+			return "", err
+		}
+		var res struct {
+			OK       bool `json:"ok"`
+			Channels []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"channels"`
+			ResponseMetadata struct {
+				NextCursor string `json:"next_cursor"`
+			} `json:"response_metadata"`
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(body, &res); err != nil {
+			return "", RetryableError{fmt.Errorf("decode conversations.list: %w", err)}
+		}
+		if !res.OK {
+			// groups:read not granted — fall back to public channels only.
+			if res.Error == "missing_scope" && types != "public_channel" {
+				types = "public_channel"
+				cursor = ""
+				page = -1
+				continue
+			}
+			if res.Error == "ratelimited" {
+				return "", RetryableError{fmt.Errorf("slack: %s", res.Error)}
+			}
+			return "", PermanentError{fmt.Errorf("slack conversations.list: %s", res.Error)}
+		}
+
+		e.mu.Lock()
+		for _, ch := range res.Channels {
+			e.channelID[ch.Name] = ch.ID
+		}
+		id, found := e.channelID[name]
+		e.mu.Unlock()
+		if found {
+			return id, nil
+		}
+
+		cursor = res.ResponseMetadata.NextCursor
+		if cursor == "" {
+			break
+		}
+	}
+	return "", PermanentError{fmt.Errorf("slack channel #%s not found — use the channel ID, or grant the app channels:read", name)}
 }
 
 // ---------- Microsoft Teams ----------

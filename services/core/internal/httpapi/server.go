@@ -79,6 +79,8 @@ func (s *Server) Router() *gin.Engine {
 		v1.POST("/register", s.register)
 		v1.POST("/login", s.login)
 		v1.POST("/token/refresh", s.refreshToken)
+		// OAuth provider redirect target; identity rides in the signed state.
+		v1.GET("/integrations/:integration/callback", s.integrationCallback)
 	}
 
 	// ---- authenticated ----

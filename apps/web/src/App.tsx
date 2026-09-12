@@ -7,6 +7,7 @@ import { ObjectiveDetailPage } from "@/pages/ObjectiveDetail";
 import { RulesPage } from "@/pages/Rules";
 import { IntegrationsPage } from "@/pages/Integrations";
 import { SettingsPage } from "@/pages/Settings";
+import { DocsPage } from "@/pages/Docs";
 import { LoginPage } from "@/pages/Login";
 import { useAuthStore } from "@/stores/useAppStore";
 
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/rules" element={<RulesPage />} />
         <Route path="/integrations" element={<IntegrationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/docs" element={<DocsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

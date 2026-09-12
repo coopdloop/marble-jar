@@ -103,6 +103,60 @@
   .numeric {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Minimal prose styling for the bundled docs markdown. */
+  .docs-prose {
+    @apply text-sm leading-relaxed text-foreground/90;
+  }
+  .docs-prose h1 {
+    @apply mb-4 text-xl font-semibold tracking-tight text-foreground;
+  }
+  .docs-prose h2 {
+    @apply mb-3 mt-7 text-base font-semibold tracking-tight text-foreground;
+  }
+  .docs-prose h3 {
+    @apply mb-2 mt-5 text-sm font-semibold text-foreground;
+  }
+  .docs-prose p {
+    @apply my-3;
+  }
+  .docs-prose blockquote {
+    @apply my-4 border-l-2 border-primary/40 pl-4 text-muted-foreground;
+  }
+  .docs-prose a {
+    @apply font-medium text-primary underline-offset-2 hover:underline;
+  }
+  .docs-prose ul,
+  .docs-prose ol {
+    @apply my-3 list-disc space-y-1 pl-5;
+  }
+  .docs-prose ol {
+    @apply list-decimal;
+  }
+  .docs-prose code {
+    @apply rounded bg-muted/70 px-1.5 py-0.5 font-mono text-[0.8em] text-foreground;
+  }
+  .docs-prose pre {
+    @apply my-4 overflow-x-auto rounded-xl border border-border/60 bg-background/80 p-4;
+  }
+  .docs-prose pre code {
+    @apply bg-transparent p-0 text-xs leading-relaxed;
+  }
+  .docs-prose table {
+    @apply my-4 w-full border-collapse text-xs;
+  }
+  .docs-prose th {
+    @apply border-b border-border/70 px-3 py-2 text-left font-medium text-muted-foreground;
+  }
+  .docs-prose td {
+    @apply border-b border-border/40 px-3 py-2 align-top;
+  }
+  .docs-prose strong {
+    @apply font-semibold text-foreground;
+  }
+  .docs-prose hr {
+    @apply my-6 border-border/60;
+  }
 }
 
 /* Scrollbars that match the dark, tactile feel. */

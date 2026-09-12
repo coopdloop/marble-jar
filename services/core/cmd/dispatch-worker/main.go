@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/marble-jar/marble-jar/services/core/internal/config"
 	"github.com/marble-jar/marble-jar/services/core/internal/dispatch"
 	"github.com/marble-jar/marble-jar/services/core/internal/eventbus"
+	"github.com/marble-jar/marble-jar/services/core/internal/store"
 )
 
 const consumerGroup = "marble-jar-dispatch"
@@ -50,6 +52,15 @@ func run() error {
 	oboProvider := dispatch.NewOBOProvider(
 		cfg.OAuthIssuerURL, cfg.OAuthClientID, cfg.OAuthClientSecret, log)
 
+	// Connected provider accounts are the real credentials; the issuer's
+	// RFC 8693 exchange is the fallback when no connection exists.
+	st, err := store.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("connect store: %w", err)
+	}
+	defer st.Close()
+	tokens := &connectionFirstTokens{store: st, obo: oboProvider}
+
 	worker := dispatch.NewWorker(dispatch.WorkerConfig{
 		CoreBaseURL:  coreURL,
 		ServiceToken: serviceToken,
@@ -60,7 +71,7 @@ func run() error {
 		"slack":   dispatch.NewSlackExecutor(),
 		"teams":   dispatch.NewTeamsExecutor(),
 		"webhook": dispatch.NewWebhookExecutor(cfg.HMACDispatchSecret),
-	}, oboProvider, log)
+	}, tokens, log)
 
 	worker.Start(ctx)
 
@@ -95,6 +106,13 @@ func run() error {
 		}
 
 		if err := worker.Submit(ctx, eventEnvelope{ev}); err != nil {
+			var perm dispatch.PermanentError
+			if errors.As(err, &perm) {
+				// Poison message: will never succeed. Commit past it.
+				log.Error("discarding invalid intent", "error", err, "event_id", ev.ID)
+				_ = reader.CommitMessages(ctx, msg)
+				continue
+			}
 			log.Error("submit intent failed", "error", err, "event_id", ev.ID)
 			// Do not commit: the message is redelivered after rebalance.
 			continue
@@ -130,6 +148,27 @@ func serveHealth(ctx context.Context, port string, log *slog.Logger) {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("worker health server failed", "error", err)
 	}
+}
+
+// connectionFirstTokens resolves dispatch credentials: the stored provider
+// connection for the acting user first (a real Slack/Atlassian/Entra token),
+// falling back to the configured issuer's OBO token exchange.
+type connectionFirstTokens struct {
+	store *store.Store
+	obo   *dispatch.OBOProvider
+}
+
+func (t *connectionFirstTokens) OBOToken(ctx context.Context, orgID string, userID *string, provider string) (string, error) {
+	if userID != nil && *userID != "" {
+		conn, err := t.store.GetOAuthConnection(ctx, orgID, *userID, provider)
+		if err == nil && conn.AccessTokenEncrypted != "" {
+			return conn.AccessTokenEncrypted, nil
+		}
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return "", err
+		}
+	}
+	return t.obo.OBOToken(ctx, orgID, userID, provider)
 }
 
 func envOr(key, fallback string) string {

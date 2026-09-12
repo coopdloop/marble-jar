@@ -317,8 +317,9 @@ func (s *Server) getIntegrationConnection(c *gin.Context) {
 
 // POST /v1/integrations/:integration/connect
 //
-// Returns the provider authorize URL. Completing the code exchange requires
-// the configured Ory/Auth0 issuer; without it this reports what is missing
+// Returns the provider's own authorize URL (Slack/Atlassian/Entra), with the
+// signed state token carrying the connecting user's identity through the
+// redirect. Without the provider app credentials this reports what is missing
 // rather than pretending the connection succeeded.
 func (s *Server) connectIntegration(c *gin.Context) {
 	p := mustPrincipal(c)
@@ -327,16 +328,20 @@ func (s *Server) connectIntegration(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported integration"})
 		return
 	}
-	if s.cfg.OAuthIssuerURL == "" {
+
+	app, err := s.appFor(provider)
+	if err != nil {
 		c.JSON(http.StatusNotImplemented, gin.H{
-			"error":    "OAuth issuer not configured",
+			"error":    "integration not configured",
 			"provider": provider,
-			"hint":     "set OAUTH_ISSUER_URL, OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET to enable OBO connections",
+			"hint":     err.Error(),
 		})
 		return
 	}
 
-	state, err := randomSecret()
+	state, err := s.signState(oauthState{
+		OrgID: p.OrganizationID, UserID: p.UserID, Provider: provider,
+	})
 	if err != nil {
 		respondStoreErr(c, err)
 		return
@@ -347,17 +352,15 @@ func (s *Server) connectIntegration(c *gin.Context) {
 		ActingUserID:   p.ActingUserID(),
 		Provider:       provider,
 		Action:         "integration.connect_initiated",
-		Details:        map[string]any{"state": state},
 	}); err != nil {
 		s.log.Warn("audit connect failed", "error", err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"provider":      provider,
-		"authorize_url": s.cfg.OAuthIssuerURL + "/oauth2/auth",
-		"client_id":     s.cfg.OAuthClientID,
+		"authorize_url": s.authorizeURL(provider, app, state),
 		"state":         state,
-		"scopes":        providerScopes(provider),
+		"scopes":        app.scopes,
 	})
 }
 

@@ -11,6 +11,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U marblejar -d marblejar"]
       interval: 5s
@@ -46,6 +47,42 @@ services:
       timeout: 5s
       retries: 20
 
+  # Ory Hydra — the OBO token broker (RFC 8693 exchange endpoint).
+  hydra-migrate:
+    image: oryd/hydra:v2.2.0
+    command: migrate sql up -e --yes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DSN: postgres://marblejar:marblejar@postgres:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+      SECRETS_SYSTEM: ${HYDRA_SECRETS_SYSTEM:-dev-hydra-system-secret-change-me-32b}
+
+  hydra:
+    image: oryd/hydra:v2.2.0
+    command: serve all --dev
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    environment:
+      DSN: postgres://marblejar:marblejar@postgres:5432/hydra?sslmode=disable&max_conns=20&max_idle_conns=4
+      SECRETS_SYSTEM: ${HYDRA_SECRETS_SYSTEM:-dev-hydra-system-secret-change-me-32b}
+      URLS_SELF_ISSUER: http://localhost:4444
+      URLS_SELF_PUBLIC: http://localhost:4444
+      URLS_SELF_ADMIN: http://localhost:4445
+      SERVE_PUBLIC_PORT: "4444"
+      SERVE_ADMIN_PORT: "4445"
+      STRATEGIES_ACCESS_TOKEN: jwt
+      TTL_ACCESS_TOKEN: 1h
+    ports:
+      - "4444:4444"
+      - "4445:4445"
+    healthcheck:
+      test: ["CMD", "hydra", "ping", "--endpoint", "http://localhost:4445"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   phoenix:
     image: arizephoenix/phoenix:latest
     ports:
@@ -74,6 +111,13 @@ services:
       HMAC_DISPATCH_SECRET: ${HMAC_DISPATCH_SECRET:-dev-dispatch-secret-change-me}
       PHOENIX_BASE_URL: http://phoenix:6006
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      OAUTH_ISSUER_URL: http://hydra:4444
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:-marble-jar}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-dev-hydra-client-secret}
+      SLACK_OAUTH_CLIENT_ID: ${SLACK_OAUTH_CLIENT_ID:-}
+      SLACK_OAUTH_CLIENT_SECRET: ${SLACK_OAUTH_CLIENT_SECRET:-}
+      PUBLIC_API_BASE_URL: http://localhost:8080
+      WEB_APP_URL: http://localhost:5173
       LOG_LEVEL: info
       PORT: "8080"
     ports:
@@ -93,6 +137,9 @@ services:
       CORE_SERVICE_TOKEN: ${CORE_SERVICE_TOKEN:-set-me-to-an-mj-api-key}
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-signing-key-at-least-32-bytes-long!}
       HMAC_DISPATCH_SECRET: ${HMAC_DISPATCH_SECRET:-dev-dispatch-secret-change-me}
+      OAUTH_ISSUER_URL: http://hydra:4444
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:-marble-jar}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-dev-hydra-client-secret}
       DISPATCH_WORKER_CONCURRENCY: "4"
       WORKER_PORT: "8081"
     ports:

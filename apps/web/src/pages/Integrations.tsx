@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Link2Off, ShieldCheck } from "lucide-react";
+import { Link2, Link2Off, ShieldCheck, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { useState } from "react";
 import { marbleJarApi } from "@/lib/api";
 import type { IntegrationStatus } from "@/lib/types";
 import { formatRelative } from "@/lib/utils";
@@ -21,6 +23,15 @@ const LABELS: Record<string, { name: string; blurb: string }> = {
 
 export function IntegrationsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const connected = searchParams.get("connected");
+  const oauthError = searchParams.get("error");
+  const [dismissed, setDismissed] = useState(false);
+
+  const clearNotice = () => {
+    setDismissed(true);
+    setSearchParams({}, { replace: true });
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ["integrations"],
@@ -53,6 +64,25 @@ export function IntegrationsPage() {
           Every dispatch runs on-behalf-of a real person — never an anonymous bot.
         </p>
       </div>
+
+      {!dismissed && (connected || oauthError) ? (
+        <div
+          className={
+            connected
+              ? "flex items-center justify-between rounded-xl border border-[hsl(var(--success))]/25 bg-[hsl(var(--success))]/10 px-4 py-2.5 text-xs text-[hsl(var(--success))]"
+              : "flex items-center justify-between rounded-xl border border-destructive/25 bg-destructive/10 px-4 py-2.5 text-xs text-destructive"
+          }
+        >
+          <span>
+            {connected
+              ? `${connected} connected — dispatches now act as you.`
+              : `Connection failed: ${oauthError}`}
+          </span>
+          <button onClick={clearNotice} aria-label="Dismiss">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-3">

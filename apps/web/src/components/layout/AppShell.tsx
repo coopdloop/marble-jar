@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Activity,
+  BookOpen,
   CircleDot,
   LogOut,
   Moon,
@@ -21,6 +22,7 @@ const NAV = [
   { to: "/objectives", label: "Objectives", icon: Target },
   { to: "/rules", label: "Rules", icon: Workflow },
   { to: "/integrations", label: "Integrations", icon: Plug },
+  { to: "/docs", label: "Docs", icon: BookOpen },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 

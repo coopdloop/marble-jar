@@ -89,6 +89,7 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   query?: Record<string, unknown>;
+  headers?: Record<string, string>;
   skipAuth?: boolean;
   /** Internal: prevents infinite refresh recursion. */
   _retried?: boolean;
@@ -101,7 +102,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
     url.searchParams.set(k, String(v));
   }
 
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...opts.headers };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
 
   if (!opts.skipAuth) {
@@ -172,6 +173,13 @@ export const marbleJarApi = {
   me: () => api<{ user?: User; organization: Organization; principal: unknown }>("/v1/me"),
 
   // marbles
+  createMarble: (body: Record<string, unknown>, idempotencyKey?: string) =>
+    api<{ marble: Marble; marble_id: string }>("/v1/marbles", {
+      method: "POST",
+      body,
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    }),
+
   listMarbles: (params: Record<string, unknown> = {}) =>
     api<Paginated<Marble>>("/v1/marbles", { query: params }),
 

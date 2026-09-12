@@ -17,5 +17,6 @@ __pycache__/
 # Go
 /services/core/server
 /services/core/worker
+/services/core/dispatch-worker
 
 .pi/tasks/
