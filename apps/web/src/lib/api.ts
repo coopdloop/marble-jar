@@ -155,9 +155,13 @@ export const marbleJarApi = {
     api<{ methods: { google: boolean } }>("/v1/auth/config", { skipAuth: true }),
 
   /** A browser redirect, not a fetch: where sign-in starts. */
-  googleSignInUrl: (workspace?: string) =>
-    `${API_BASE_URL}/v1/auth/google/start` +
-    (workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""),
+  googleSignInUrl: () => `${API_BASE_URL}/v1/auth/google/start`,
+
+  /** Admin-only: a link that signs its visitor into this workspace. */
+  createGoogleInvite: () =>
+    api<{ join_url: string; expires_at: string }>("/v1/auth/google/invite", {
+      method: "POST",
+    }),
 
   /** Redeems the single-use code the Google callback left in the URL. */
   exchangeLoginCode: (loginCode: string) =>

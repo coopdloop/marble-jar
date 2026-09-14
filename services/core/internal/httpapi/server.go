@@ -100,6 +100,9 @@ func (s *Server) Router() *gin.Engine {
 	{
 		api.GET("/me", s.me)
 		api.POST("/token/introspect", s.introspect)
+		// Join links are admin-minted: a stranger cannot choose which workspace
+		// a sign-in provisions them into.
+		api.POST("/auth/google/invite", s.googleInvite)
 
 		// Ingestion surface (SDK / MCP / webhook senders).
 		api.POST("/marbles", s.logMarble)

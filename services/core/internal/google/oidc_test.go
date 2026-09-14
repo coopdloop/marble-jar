@@ -18,6 +18,10 @@ import (
 
 const testClientID = "test-client.apps.googleusercontent.com"
 
+// The nonce the fixture tokens carry, which the flow that started them expects
+// back.
+const testNonce = "nonce-from-the-authorize-redirect"
+
 type fixture struct {
 	verifier  *Verifier
 	keyID     string
@@ -67,13 +71,14 @@ func validClaims() map[string]any {
 		"iss": Issuer, "aud": testClientID, "sub": "1087171234567890",
 		"email": "dev@marblejar.io", "email_verified": true,
 		"name": "Dev", "picture": "https://example.com/a.png",
-		"exp": now.Add(time.Hour).Unix(), "iat": now.Unix(),
+		"nonce": testNonce,
+		"exp":   now.Add(time.Hour).Unix(), "iat": now.Unix(),
 	}
 }
 
 func TestVerifyAcceptsGoodToken(t *testing.T) {
 	f := newFixture(t)
-	id, err := f.verifier.Verify(context.Background(), f.token(t, validClaims()))
+	id, err := f.verifier.Verify(context.Background(), f.token(t, validClaims()), testNonce)
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
@@ -95,11 +100,13 @@ func TestVerifyRejects(t *testing.T) {
 		"unverified email": func(c map[string]any) { c["email_verified"] = false },
 		"missing email":    func(c map[string]any) { delete(c, "email") },
 		"expired":          func(c map[string]any) { c["exp"] = time.Now().Add(-time.Hour).Unix() },
+		"stolen nonce":     func(c map[string]any) { c["nonce"] = "someone-elses-flow" },
+		"missing nonce":    func(c map[string]any) { delete(c, "nonce") },
 	}
 	for name, mutate := range cases {
 		claims := validClaims()
 		mutate(claims)
-		if _, err := f.verifier.Verify(ctx, f.token(t, claims)); err == nil {
+		if _, err := f.verifier.Verify(ctx, f.token(t, claims), testNonce); err == nil {
 			t.Fatalf("%s: expected rejection", name)
 		}
 	}
@@ -109,7 +116,7 @@ func TestDomainPrefersHostedDomain(t *testing.T) {
 	f := newFixture(t)
 	claims := validClaims()
 	claims["hd"] = "Acme.COM"
-	id, err := f.verifier.Verify(context.Background(), f.token(t, claims))
+	id, err := f.verifier.Verify(context.Background(), f.token(t, claims), testNonce)
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
@@ -130,7 +137,7 @@ func TestVerifyRejectsUnknownKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.verifier.Verify(context.Background(), raw); err == nil {
+	if _, err := f.verifier.Verify(context.Background(), raw, testNonce); err == nil {
 		t.Fatal("expected a token signed by an unknown key to be rejected")
 	}
 }
@@ -142,7 +149,7 @@ func TestVerifyRejectsAlgConfusion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.verifier.Verify(context.Background(), raw); err == nil {
+	if _, err := f.verifier.Verify(context.Background(), raw, testNonce); err == nil {
 		t.Fatal("expected an HS256 token to be rejected")
 	}
 }
@@ -150,7 +157,7 @@ func TestVerifyRejectsAlgConfusion(t *testing.T) {
 func TestVerifyFetchesJWKSOnce(t *testing.T) {
 	f := newFixture(t)
 	for i := 0; i < 3; i++ {
-		if _, err := f.verifier.Verify(context.Background(), f.token(t, validClaims())); err != nil {
+		if _, err := f.verifier.Verify(context.Background(), f.token(t, validClaims()), testNonce); err != nil {
 			t.Fatalf("verify %d: %v", i, err)
 		}
 	}

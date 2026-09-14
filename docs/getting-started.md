@@ -24,8 +24,13 @@ stack, then open <http://localhost:5173/login> and click **Sign in with
 Google**. There are no passwords: the first account to sign in is provisioned
 with its own workspace and owns it.
 
-Accounts created under the old email/password flow can no longer sign in, so
-clear them once with `make reset-users`.
+Accounts from the old email/password flow are `auth_provider = 'local'` with no
+provider subject: signing in with a matching verified Google email claims such
+an account (role and history intact), or clear them once with
+`make reset-users`.
+
+To bring a teammate into your workspace, use **Settings → Invite a teammate** and
+send them the link — a join link is the only way to land in someone else's jar.
 
 ## 3. Create an API key
 

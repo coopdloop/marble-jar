@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -56,6 +57,7 @@ func TestGoogleStartRedirectsToGoogle(t *testing.T) {
 		"redirect_uri=http%3A%2F%2Fapi.test%2Fv1%2Fauth%2Fgoogle%2Fcallback",
 		"scope=openid+email+profile",
 		"response_type=code",
+		"code_challenge_method=S256",
 	} {
 		if !strings.Contains(loc, want) {
 			t.Fatalf("authorize url missing %q:\n%s", want, loc)
@@ -68,8 +70,117 @@ func TestGoogleStartRedirectsToGoogle(t *testing.T) {
 		!strings.Contains(setCookie, "HttpOnly") {
 		t.Fatalf("expected a bound state cookie, got %q", setCookie)
 	}
-	if !strings.Contains(loc, "state=") {
-		t.Fatal("expected the state parameter to be set")
+
+	state := queryOf(t, loc, "state")
+	// PKCE and the ID-token nonce both come from the same flow instance.
+	if got := queryOf(t, loc, "nonce"); got == "" {
+		t.Fatal("expected a nonce on the authorize request")
+	}
+	opened, err := s.openGoogleState(googlePurposeSignIn, state)
+	if err != nil {
+		t.Fatalf("open own state: %v", err)
+	}
+	if opened.Nonce == "" || opened.Verifier == "" {
+		t.Fatalf("state must carry the nonce and pkce verifier: %+v", opened)
+	}
+	if want := pkceChallenge(opened.Verifier); queryOf(t, loc, "code_challenge") != want {
+		t.Fatalf("code_challenge mismatch: state says %q, url says %q",
+			want, queryOf(t, loc, "code_challenge"))
+	}
+}
+
+// A visitor must not get to pick which workspace a sign-in provisions them into.
+func TestGoogleStartIgnoresSelfServiceWorkspace(t *testing.T) {
+	s := googleTestServer()
+	r := gin.New()
+	r.GET("/v1/auth/google/start", s.googleStart)
+
+	res := doRequest(r, httptest.NewRequest(http.MethodGet,
+		"/v1/auth/google/start?workspace=00000000-0000-0000-0000-000000000000", nil))
+	state, err := s.openGoogleState(googlePurposeSignIn,
+		queryOf(t, res.Header.Get("Location"), "state"))
+	if err != nil {
+		t.Fatalf("open state: %v", err)
+	}
+	if state.Invited || state.Workspace != "" {
+		t.Fatalf("a query parameter must not choose the workspace: %+v", state)
+	}
+}
+
+func TestGoogleStartHonoursAdminInvite(t *testing.T) {
+	s := googleTestServer()
+	r := gin.New()
+	r.GET("/v1/auth/google/start", s.googleStart)
+
+	orgID := "00000000-0000-0000-0000-000000000000"
+	invite, err := s.signGoogleState(googlePurposeInvite, googleAuthState{
+		Workspace: orgID, Nonce: "invite-nonce",
+		Expires: time.Now().Add(googleInviteTTL).Unix(),
+	})
+	if err != nil {
+		t.Fatalf("sign invite: %v", err)
+	}
+
+	res := doRequest(r, httptest.NewRequest(http.MethodGet,
+		"/v1/auth/google/start?invite="+url.QueryEscape(invite), nil))
+	state, err := s.openGoogleState(googlePurposeSignIn,
+		queryOf(t, res.Header.Get("Location"), "state"))
+	if err != nil {
+		t.Fatalf("open state: %v", err)
+	}
+	if !state.Invited || state.Workspace != orgID {
+		t.Fatalf("invite was not carried through: %+v", state)
+	}
+}
+
+// An invite is not a sign-in state, and vice versa: the purpose tag separates them.
+func TestGoogleStatePurposeSeparation(t *testing.T) {
+	s := googleTestServer()
+	invite, err := s.signGoogleState(googlePurposeInvite, googleAuthState{
+		Workspace: "org-1", Nonce: "n", Expires: time.Now().Add(time.Hour).Unix(),
+	})
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	if _, err := s.openGoogleState(googlePurposeSignIn, invite); err == nil {
+		t.Fatal("expected an invite token to be rejected as a sign-in state")
+	}
+
+	session, err := s.signGoogleState(googlePurposeSignIn, googleAuthState{
+		Nonce: "n", Expires: time.Now().Add(time.Hour).Unix(),
+	})
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	if _, err := s.openGoogleState(googlePurposeInvite, session); err == nil {
+		t.Fatal("expected a sign-in state to be rejected as an invite")
+	}
+}
+
+func TestGoogleInviteRequiresAdmin(t *testing.T) {
+	s := googleTestServer()
+	r := gin.New()
+	r.POST("/v1/auth/google/invite", s.googleInvite)
+
+	res := doRequest(r, httptest.NewRequest(http.MethodPost, "/v1/auth/google/invite", nil))
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403", res.StatusCode)
+	}
+}
+
+func TestGoogleStateCookieHonoursBasePath(t *testing.T) {
+	s := googleTestServer()
+	s.cfg.PublicURL = "https://host.example/api"
+
+	cookie := s.googleStateCookie("value")
+	if cookie.Path != "/api/v1/auth/google" {
+		t.Fatalf("cookie path ignored the base path: %q", cookie.Path)
+	}
+	if !cookie.Secure {
+		t.Fatal("expected the state cookie to be Secure on https")
+	}
+	if got := s.googleRedirectURI(); got != "https://host.example/api/v1/auth/google/callback" {
+		t.Fatalf("redirect uri: %q", got)
 	}
 }
 

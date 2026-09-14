@@ -27,10 +27,13 @@ const (
 	JWKSURL      = "https://www.googleapis.com/oauth2/v3/certs"
 	Issuer       = "accounts.google.com"
 	// Google has issued both spellings over time; accept either.
-	IssuerAlt    = "https://accounts.google.com"
-	OIDCScope    = "openid email profile"
-	cacheTTL     = time.Hour
-	maxJWKSBytes = 1 << 16
+	IssuerAlt = "https://accounts.google.com"
+	OIDCScope = "openid email profile"
+	cacheTTL  = time.Hour
+	// minRefreshGap keeps a broken or unreachable JWKS endpoint from being hit
+	// on every signature attempt.
+	minRefreshGap = time.Minute
+	maxJWKSBytes  = 1 << 16
 )
 
 // Identity is the verified subset of the Google ID token we act on.
@@ -61,6 +64,7 @@ type idClaims struct {
 	Name          string `json:"name"`
 	Picture       string `json:"picture"`
 	HostedDomain  string `json:"hd"`
+	Nonce         string `json:"nonce"`
 	jwt.RegisteredClaims
 }
 
@@ -71,9 +75,10 @@ type Verifier struct {
 	http     *http.Client
 	jwksURL  string
 
-	mu      sync.Mutex
-	keys    map[string]*rsa.PublicKey
-	fetched time.Time
+	mu        sync.Mutex
+	keys      map[string]*rsa.PublicKey
+	fetched   time.Time
+	attempted time.Time
 }
 
 func NewVerifier(clientID string) *Verifier {
@@ -86,8 +91,10 @@ func NewVerifier(clientID string) *Verifier {
 }
 
 // Verify returns the identity only if the token is a current, correctly issued
-// and correctly audenced Google ID token for this client.
-func (v *Verifier) Verify(ctx context.Context, rawToken string) (*Identity, error) {
+// and correctly audenced Google ID token for this client, minted for the flow
+// that is asking. expectedNonce ties the token to one authorize redirect; an ID
+// token captured from elsewhere fails even though its signature is genuine.
+func (v *Verifier) Verify(ctx context.Context, rawToken, expectedNonce string) (*Identity, error) {
 	kid, err := tokenKeyID(rawToken)
 	if err != nil {
 		return nil, err
@@ -121,6 +128,9 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (*Identity, erro
 	if claims.Email == "" || !claims.EmailVerified {
 		return nil, fmt.Errorf("google id_token: email not verified")
 	}
+	if expectedNonce != "" && claims.Nonce != expectedNonce {
+		return nil, fmt.Errorf("google id_token: nonce mismatch")
+	}
 
 	return &Identity{
 		Subject: claims.Subject, Email: claims.Email, EmailVerified: true,
@@ -150,24 +160,39 @@ func tokenKeyID(raw string) (string, error) {
 	return header.KID, nil
 }
 
-// publicKey serves a cached key, refetching JWKS when the kid is unknown or the
-// cache has aged out. Google rotates keys without notice, so an unknown kid is
-// always a refresh rather than an error.
+// publicKey serves a cached key, refreshing when the cache has aged out or the
+// kid is unknown. Google rotates keys without notice, so an unknown kid is a
+// refresh rather than an error — and a failing refresh must not lock everyone
+// out while a previously valid key is still in hand.
 func (v *Verifier) publicKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
-	if key, ok := v.keys[kid]; ok && time.Since(v.fetched) < cacheTTL {
-		return key, nil
+	cached, known := v.keys[kid]
+	if known && time.Since(v.fetched) < cacheTTL {
+		return cached, nil
 	}
+	if time.Since(v.attempted) < minRefreshGap {
+		if known {
+			return cached, nil
+		}
+		return nil, fmt.Errorf("cannot resolve Google signing key %q yet", kid)
+	}
+
+	v.attempted = time.Now()
 	if err := v.refreshLocked(ctx); err != nil {
+		if known {
+			return cached, nil
+		}
 		return nil, err
 	}
-	key, ok := v.keys[kid]
-	if !ok {
-		return nil, fmt.Errorf("no Google key with kid %q", kid)
+	if key, ok := v.keys[kid]; ok {
+		return key, nil
 	}
-	return key, nil
+	if known {
+		return cached, nil
+	}
+	return nil, fmt.Errorf("no Google key with kid %q", kid)
 }
 
 func (v *Verifier) refreshLocked(ctx context.Context) error {

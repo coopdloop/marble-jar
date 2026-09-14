@@ -34,26 +34,6 @@ func (s *Store) GetOrganization(ctx context.Context, id string) (*Organization, 
 	return &o, nil
 }
 
-func (s *Store) GetOrganizationBySlug(ctx context.Context, slug string) (*Organization, error) {
-	var o Organization
-	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, settings, created_at, updated_at
-		FROM organizations WHERE slug = $1`, slug,
-	).Scan(&o.ID, &o.Name, &o.Slug, &o.Settings, &o.CreatedAt, &o.UpdatedAt)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return &o, nil
-}
-
-// HasAnyUsers reports whether the instance already has an account; the very
-// first sign-in provisions a workspace instead of landing in a shared one.
-func (s *Store) HasAnyUsers(ctx context.Context) (bool, error) {
-	var exists bool
-	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users)`).Scan(&exists)
-	return exists, mapErr(err)
-}
-
 const userColumns = `id, organization_id, email, display_name, avatar_url, role,
 	is_active, auth_provider, provider_subject, created_at, updated_at`
 
@@ -101,15 +81,28 @@ func (s *Store) GetUserByProviderSubject(ctx context.Context, provider, subject 
 		` FROM users WHERE auth_provider = $1 AND provider_subject = $2`, provider, subject))
 }
 
-// LinkProviderIdentity binds a provider identity to an existing account (the
-// email matched) and refreshes the profile it claims. Existing admin accounts
-// are signed in this way the first time they use Google.
-func (s *Store) LinkProviderIdentity(ctx context.Context, userID, provider, subject, displayName, avatarURL string) (*User, error) {
+// RefreshProviderProfile updates the profile fields a provider claims for an
+// account it is already bound to. The email is deliberately left alone: it is a
+// lookup key elsewhere, and identity here is the provider subject.
+func (s *Store) RefreshProviderProfile(ctx context.Context, userID, provider, subject, displayName, avatarURL string) (*User, error) {
+	return scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users SET display_name = COALESCE($4, display_name),
+		                 avatar_url = COALESCE($5, avatar_url), updated_at = NOW()
+		WHERE id = $1 AND auth_provider = $2 AND provider_subject = $3
+		RETURNING `+userColumns,
+		userID, provider, subject, nullable(displayName), nullable(avatarURL)))
+}
+
+// ClaimUserForProvider binds a provider identity to an account that has none
+// yet — how an account predating Google sign-in keeps its role and history.
+// It never moves an account that is already bound to another subject, so two
+// provider identities claiming one email cannot ping-pong the owner out.
+func (s *Store) ClaimUserForProvider(ctx context.Context, userID, provider, subject, displayName, avatarURL string) (*User, error) {
 	return scanUser(s.pool.QueryRow(ctx, `
 		UPDATE users SET auth_provider = $2, provider_subject = $3,
-	                 display_name = COALESCE($4, display_name),
-	                 avatar_url = COALESCE($5, avatar_url), updated_at = NOW()
-		WHERE id = $1
+		                 display_name = COALESCE($4, display_name),
+		                 avatar_url = COALESCE($5, avatar_url), updated_at = NOW()
+		WHERE id = $1 AND provider_subject IS NULL
 		RETURNING `+userColumns,
 		userID, provider, subject, nullable(displayName), nullable(avatarURL)))
 }

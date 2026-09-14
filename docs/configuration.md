@@ -39,10 +39,17 @@ The redirect URI must be `PUBLIC_API_BASE_URL + /v1/auth/google/callback`, e.g.
 callback endpoints answer `501` and the sign-in page says so rather than
 failing quietly.
 
-Signing in provisions on first use: a verified Google account with no local row
-gets its own workspace (it becomes `owner`), unless the flow started with
-`?workspace=<slug-or-uuid>`, which adds them as `member`. An account whose email
-already exists is linked to that row instead, keeping its role and history.
+Provisioning happens on first use. A verified Google account with no local row
+opens its own workspace and owns it (`role = owner`). Joining an existing
+workspace needs a link minted by an admin — **Settings → Invite a teammate**
+(`POST /v1/auth/google/invite`), valid 7 days — because a visitor cannot be
+allowed to name a workspace themselves. An account whose email already exists is
+linked to that row instead, keeping its role and history; that link only happens
+once per row, so two Google accounts claiming one email cannot trade ownership.
+
+Unlike the OBO issuer, these credentials are useless without
+`PUBLIC_API_BASE_URL` being reachable from the browser — a proxy base path is
+honoured (`https://host/api` registers `https://host/api/v1/auth/google/callback`).
 
 ## OBO / OAuth (see [Integrations & OBO](./integrations.md))
 

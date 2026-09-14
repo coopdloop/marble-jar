@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
+import { Check, Copy, KeyRound, Plus, Trash2, UserPlus } from "lucide-react";
 import { API_BASE_URL, marbleJarApi } from "@/lib/api";
 import { formatRelative } from "@/lib/utils";
 import {
@@ -31,6 +31,7 @@ export function SettingsPage() {
       </div>
 
       <TokenManager />
+      <WorkspaceInvite />
       <OnboardingSnippet />
 
       <Card>
@@ -312,3 +313,69 @@ httpx.post(
     "tokens": {"in": 12000, "out": 3000}
   }'`,
 };
+
+/**
+ * Google sign-in provisions a personal workspace for anyone who just signs in.
+ * Joining an existing one needs a link minted here, so a stranger cannot choose
+ * which workspace they land in.
+ */
+function WorkspaceInvite() {
+  const { user, organization } = useAuthStore();
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: marbleJarApi.createGoogleInvite,
+    onSuccess: (res) => setJoinUrl(res.join_url),
+  });
+
+  if (user?.role !== "owner" && user?.role !== "admin") return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <UserPlus className="h-4 w-4 text-primary" />
+          Invite a teammate
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          The link signs its visitor into {organization?.name ?? "this workspace"} as a member
+          once they authenticate with Google. It expires after 7 days.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? "Minting…" : joinUrl ? "New link" : "Create join link"}
+        </Button>
+
+        {mutation.isError ? (
+          <p className="text-[11px] text-destructive">{(mutation.error as Error).message}</p>
+        ) : null}
+
+        {joinUrl ? (
+          <div className="flex gap-2">
+            <code className="flex-1 truncate rounded bg-background/60 px-2 py-1.5 text-[11px]">
+              {joinUrl}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(joinUrl);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}

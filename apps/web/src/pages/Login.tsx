@@ -33,7 +33,6 @@ export function LoginPage() {
   const setSession = useAuthStore((s) => s.setSession);
   const [error, setError] = useState<string | null>(null);
   const [googleReady, setGoogleReady] = useState(false);
-  const [workspace, setWorkspace] = useState("");
   const [redeeming, setRedeeming] = useState(false);
   const redeemed = useRef(false);
 
@@ -46,9 +45,11 @@ export function LoginPage() {
       .catch(() => setGoogleReady(false));
   }, []);
 
-  // The Google callback redirects back here with a single-use login code.
+  // The Google callback hands us a single-use code. It arrives in the URL
+  // fragment so it never reaches the web tier's logs or a Referer header.
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get("login_code");
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const code = params.get("login_code");
     const callbackError = new URLSearchParams(window.location.search).get("error");
     if (callbackError) setError(callbackError);
     if (!code || redeemed.current) return;
@@ -97,9 +98,7 @@ export function LoginPage() {
                   className="w-full gap-2.5"
                   disabled={!googleReady}
                   onClick={() => {
-                    window.location.assign(
-                      marbleJarApi.googleSignInUrl(workspace.trim() || undefined),
-                    );
+                    window.location.assign(marbleJarApi.googleSignInUrl());
                   }}
                 >
                   <GoogleMark />
@@ -114,17 +113,10 @@ export function LoginPage() {
                     <code className="mx-1">make dev</code>.
                   </p>
                 ) : (
-                  <details className="text-[11px] text-muted-foreground">
-                    <summary className="cursor-pointer">
-                      Join an existing workspace
-                    </summary>
-                    <input
-                      value={workspace}
-                      onChange={(e) => setWorkspace(e.target.value)}
-                      placeholder="workspace slug or id"
-                      className="mt-2 w-full rounded-md border border-border/60 bg-background px-2 py-1 text-foreground outline-none focus:ring-1 focus:ring-primary/40"
-                    />
-                  </details>
+                  <p className="text-[11px] text-muted-foreground">
+                    New here? Signing in opens a workspace of your own. To join
+                    an existing one, use the link an admin sent you.
+                  </p>
                 )}
               </>
             )}

@@ -8,8 +8,9 @@ All routes live under `/v1` and accept either a session JWT (web UI) or an
 | Method & path | Notes |
 | --- | --- |
 | `GET /v1/auth/config` | Which sign-in methods this server has configured. |
-| `GET /v1/auth/google/start` | 302 to Google. Optional `?workspace=<slug-or-uuid>` joins that workspace as `member`. |
-| `GET /v1/auth/google/callback` | Google's redirect target; answers with a 60-second single-use `login_code`. |
+| `GET /v1/auth/google/start` | 302 to Google (PKCE + nonce). `?invite=<token>` joins that workspace as `member`. |
+| `POST /v1/auth/google/invite` | Admin-only. Mints a 7-day join link for the caller's workspace. |
+| `GET /v1/auth/google/callback` | Google's redirect target; answers with a 60-second single-use `login_code` in the URL fragment. |
 | `POST /v1/auth/exchange` | `{login_code}` → user, org, access + refresh tokens. |
 | `POST /v1/token/refresh` | Rotates the pair. |
 | `GET /v1/me` | Current principal. |
@@ -17,8 +18,8 @@ All routes live under `/v1` and accept either a session JWT (web UI) or an
 | `GET/POST /v1/api-keys`, `DELETE /v1/api-keys/:id` | `mj_` keys with scopes. |
 
 There is no password endpoint: humans arrive through Google, and the ID token's
-signature, `iss`, `aud`, expiry and `email_verified` are all checked server-side
-before a session is issued.
+signature, `iss`, `aud`, `nonce`, expiry and `email_verified` are all checked
+server-side before a session is issued. Agents keep using `mj_` API keys.
 
 ## Ingestion
 
