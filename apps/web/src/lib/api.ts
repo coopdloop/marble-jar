@@ -150,23 +150,20 @@ function safeParse(text: string): unknown {
 
 /** Typed endpoint surface consumed by TanStack Query hooks. */
 export const marbleJarApi = {
-  // auth
-  login: (email: string, password: string) =>
-    api<{ user: User; organization: Organization; tokens: Tokens }>("/v1/login", {
-      method: "POST",
-      body: { email, password },
-      skipAuth: true,
-    }),
+  // auth — Google sign-in is the only human credential; passwords are gone.
+  authConfig: () =>
+    api<{ methods: { google: boolean } }>("/v1/auth/config", { skipAuth: true }),
 
-  register: (input: {
-    email: string;
-    password: string;
-    display_name?: string;
-    organization_name?: string;
-  }) =>
-    api<{ user: User; tokens: Tokens }>("/v1/register", {
+  /** A browser redirect, not a fetch: where sign-in starts. */
+  googleSignInUrl: (workspace?: string) =>
+    `${API_BASE_URL}/v1/auth/google/start` +
+    (workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""),
+
+  /** Redeems the single-use code the Google callback left in the URL. */
+  exchangeLoginCode: (loginCode: string) =>
+    api<{ user: User; organization: Organization; tokens: Tokens }>("/v1/auth/exchange", {
       method: "POST",
-      body: input,
+      body: { login_code: loginCode },
       skipAuth: true,
     }),
 
