@@ -110,16 +110,17 @@ type Organization struct {
 }
 
 type User struct {
-	ID             string    `json:"id" db:"id"`
-	OrganizationID string    `json:"organization_id" db:"organization_id"`
-	Email          string    `json:"email" db:"email"`
-	DisplayName    *string   `json:"display_name" db:"display_name"`
-	AvatarURL      *string   `json:"avatar_url" db:"avatar_url"`
-	Role           string    `json:"role" db:"role"`
-	IsActive       bool      `json:"is_active" db:"is_active"`
-	PasswordHash   *string   `json:"-" db:"password_hash"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	ID              string    `json:"id" db:"id"`
+	OrganizationID  string    `json:"organization_id" db:"organization_id"`
+	Email           string    `json:"email" db:"email"`
+	DisplayName     *string   `json:"display_name" db:"display_name"`
+	AvatarURL       *string   `json:"avatar_url" db:"avatar_url"`
+	Role            string    `json:"role" db:"role"`
+	IsActive        bool      `json:"is_active" db:"is_active"`
+	AuthProvider    string    `json:"auth_provider" db:"auth_provider"`
+	ProviderSubject *string   `json:"-" db:"provider_subject"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type Project struct {

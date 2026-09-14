@@ -34,46 +34,94 @@ func (s *Store) GetOrganization(ctx context.Context, id string) (*Organization, 
 	return &o, nil
 }
 
-const userColumns = `id, organization_id, email, display_name, avatar_url, role,
-	is_active, password_hash, created_at, updated_at`
+func (s *Store) GetOrganizationBySlug(ctx context.Context, slug string) (*Organization, error) {
+	var o Organization
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, name, slug, settings, created_at, updated_at
+		FROM organizations WHERE slug = $1`, slug,
+	).Scan(&o.ID, &o.Name, &o.Slug, &o.Settings, &o.CreatedAt, &o.UpdatedAt)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return &o, nil
+}
 
-func (s *Store) CreateUser(ctx context.Context, orgID, email, displayName, role, passwordHash string) (*User, error) {
+// HasAnyUsers reports whether the instance already has an account; the very
+// first sign-in provisions a workspace instead of landing in a shared one.
+func (s *Store) HasAnyUsers(ctx context.Context) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users)`).Scan(&exists)
+	return exists, mapErr(err)
+}
+
+const userColumns = `id, organization_id, email, display_name, avatar_url, role,
+	is_active, auth_provider, provider_subject, created_at, updated_at`
+
+// NewUser describes an account provisioned by an external identity provider.
+type NewUser struct {
+	OrganizationID  string
+	Email           string
+	DisplayName     string
+	AvatarURL       string
+	Role            string
+	AuthProvider    string
+	ProviderSubject string
+}
+
+func (s *Store) CreateUser(ctx context.Context, in NewUser) (*User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO users (organization_id, email, display_name, role, password_hash)
-		VALUES ($1,$2,$3,$4,$5)
+		INSERT INTO users (organization_id, email, display_name, avatar_url, role,
+		                   auth_provider, provider_subject)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
 		RETURNING `+userColumns,
-		orgID, strings.ToLower(email), nullable(displayName), role, nullable(passwordHash),
+		in.OrganizationID, strings.ToLower(in.Email), nullable(in.DisplayName),
+		nullable(in.AvatarURL), in.Role, in.AuthProvider, nullable(in.ProviderSubject),
 	).Scan(&u.ID, &u.OrganizationID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.Role,
-		&u.IsActive, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
+		&u.IsActive, &u.AuthProvider, &u.ProviderSubject, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	return &u, nil
+}
+
+func scanUser(row interface{ Scan(...any) error }) (*User, error) {
+	var u User
+	err := row.Scan(&u.ID, &u.OrganizationID, &u.Email, &u.DisplayName, &u.AvatarURL,
+		&u.Role, &u.IsActive, &u.AuthProvider, &u.ProviderSubject, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return &u, nil
+}
+
+// GetUserByProviderSubject finds the account already bound to a provider identity.
+func (s *Store) GetUserByProviderSubject(ctx context.Context, provider, subject string) (*User, error) {
+	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userColumns+
+		` FROM users WHERE auth_provider = $1 AND provider_subject = $2`, provider, subject))
+}
+
+// LinkProviderIdentity binds a provider identity to an existing account (the
+// email matched) and refreshes the profile it claims. Existing admin accounts
+// are signed in this way the first time they use Google.
+func (s *Store) LinkProviderIdentity(ctx context.Context, userID, provider, subject, displayName, avatarURL string) (*User, error) {
+	return scanUser(s.pool.QueryRow(ctx, `
+		UPDATE users SET auth_provider = $2, provider_subject = $3,
+	                 display_name = COALESCE($4, display_name),
+	                 avatar_url = COALESCE($5, avatar_url), updated_at = NOW()
+		WHERE id = $1
+		RETURNING `+userColumns,
+		userID, provider, subject, nullable(displayName), nullable(avatarURL)))
 }
 
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	var u User
-	err := s.pool.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM users WHERE email = $1`, strings.ToLower(email),
-	).Scan(&u.ID, &u.OrganizationID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.Role,
-		&u.IsActive, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return &u, nil
+	return scanUser(s.pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE email = $1`, strings.ToLower(email)))
 }
 
 func (s *Store) GetUser(ctx context.Context, id string) (*User, error) {
-	var u User
-	err := s.pool.QueryRow(ctx,
-		`SELECT `+userColumns+` FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.OrganizationID, &u.Email, &u.DisplayName, &u.AvatarURL, &u.Role,
-		&u.IsActive, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return &u, nil
+	return scanUser(s.pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE id = $1`, id))
 }
 
 // ---------- api keys ----------

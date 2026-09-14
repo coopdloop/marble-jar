@@ -21,6 +21,13 @@ type Config struct {
 	OAuthIssuerURL     string
 	OAuthClientID      string
 	OAuthClientSecret  string
+	// Google sign-in for the dashboard (OpenID Connect authorization code).
+	// These are the *client* credentials from Google Cloud, not the OBO issuer.
+	GoogleClientID     string
+	GoogleClientSecret string
+	// GoogleAllowedDomains restricts sign-in to these Workspace domains.
+	// Empty means any Google account with a verified email may sign in.
+	GoogleAllowedDomains []string
 	// Per-provider OAuth apps used by the integration connect flow.
 	SlackClientID         string
 	SlackClientSecret     string
@@ -57,6 +64,9 @@ func Load() (*Config, error) {
 		OAuthIssuerURL:        env("OAUTH_ISSUER_URL", env("HYDRA_ISSUER_URL", "")),
 		OAuthClientID:         env("OAUTH_CLIENT_ID", env("HYDRA_CLIENT_ID", "")),
 		OAuthClientSecret:     env("OAUTH_CLIENT_SECRET", env("HYDRA_CLIENT_SECRET", "")),
+		GoogleClientID:        env("GOOGLE_OAUTH_CLIENT_ID", ""),
+		GoogleClientSecret:    env("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+		GoogleAllowedDomains:  splitList(env("GOOGLE_OAUTH_ALLOWED_DOMAINS", "")),
 		SlackClientID:         env("SLACK_OAUTH_CLIENT_ID", ""),
 		SlackClientSecret:     env("SLACK_OAUTH_CLIENT_SECRET", ""),
 		AtlassianClientID:     env("ATLASSIAN_OAUTH_CLIENT_ID", ""),
@@ -97,6 +107,25 @@ func Load() (*Config, error) {
 		c.HMACDispatchSecret = "dev-insecure-dispatch-secret"
 	}
 	return c, nil
+}
+
+// GoogleOAuthConfigured reports whether the dashboard can offer Google sign-in.
+func (c *Config) GoogleOAuthConfigured() bool {
+	return c.GoogleClientID != "" && c.GoogleClientSecret != ""
+}
+
+// AllowsGoogleDomain applies the optional Workspace-domain allowlist.
+func (c *Config) AllowsGoogleDomain(domain string) bool {
+	if len(c.GoogleAllowedDomains) == 0 {
+		return true
+	}
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	for _, allowed := range c.GoogleAllowedDomains {
+		if strings.ToLower(strings.TrimSpace(allowed)) == domain {
+			return true
+		}
+	}
+	return false
 }
 
 func env(key, fallback string) string {

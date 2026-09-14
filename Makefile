@@ -1,6 +1,6 @@
 COMPOSE := docker compose
 
-.PHONY: dev dev-build down restart logs ps clean \
+.PHONY: dev dev-build down restart logs ps clean reset-users \
 	test-core typecheck-web typecheck-sdk check
 
 # --- Dev stack ---------------------------------------------------------------
@@ -34,6 +34,13 @@ ps:
 # Stop everything and remove volumes (drops the DB).
 clean:
 	$(COMPOSE) down -v
+
+# Delete the password-era accounts and the workspaces they created so Google
+# sign-in starts from a clean identity table. Cascades to their marbles,
+# objectives, rules, dispatches, audit log and API keys.
+reset-users:
+	$(COMPOSE) exec -T postgres psql -U marblejar -d marblejar -v ON_ERROR_STOP=1 < scripts/reset-users.sql
+	@echo "identities cleared — sign in with Google, then recreate the worker's API key"
 
 # --- Repo checks -------------------------------------------------------------
 

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -161,17 +160,6 @@ func (m *Manager) Verify(token, expectedType string) (*Claims, error) {
 		return nil, ErrInvalidToken
 	}
 	return claims, nil
-}
-
-// ---------- password hashing ----------
-
-func HashPassword(pw string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
-	return string(b), err
-}
-
-func CheckPassword(hash, pw string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw)) == nil
 }
 
 // ---------- API keys ----------

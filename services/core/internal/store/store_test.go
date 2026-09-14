@@ -111,8 +111,14 @@ func newOrg(t *testing.T) string {
 
 func newUser(t *testing.T, orgID string) *store.User {
 	t.Helper()
-	u, err := testDB.CreateUser(context.Background(), orgID,
-		fmt.Sprintf("u-%s@test.dev", randHex(4)), "Tester", "owner", "x")
+	u, err := testDB.CreateUser(context.Background(), store.NewUser{
+		OrganizationID:  orgID,
+		Email:           fmt.Sprintf("u-%s@test.dev", randHex(4)),
+		DisplayName:     "Tester",
+		Role:            "owner",
+		AuthProvider:    "google",
+		ProviderSubject: randHex(12),
+	})
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}

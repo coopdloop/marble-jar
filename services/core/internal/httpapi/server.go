@@ -5,6 +5,7 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -14,6 +15,7 @@ import (
 	"github.com/marble-jar/marble-jar/services/core/internal/config"
 	"github.com/marble-jar/marble-jar/services/core/internal/dispatch"
 	"github.com/marble-jar/marble-jar/services/core/internal/eventbus"
+	"github.com/marble-jar/marble-jar/services/core/internal/google"
 	"github.com/marble-jar/marble-jar/services/core/internal/marbles"
 	"github.com/marble-jar/marble-jar/services/core/internal/objectives"
 	"github.com/marble-jar/marble-jar/services/core/internal/realtime"
@@ -32,6 +34,11 @@ type Server struct {
 	dispatcher *dispatch.Service
 	metrics    *telemetry.Metrics
 	log        *slog.Logger
+
+	// Lazy sign-in collaborators (see googleVerifier/loginCodes).
+	lazyMu  sync.Mutex
+	googleV *google.Verifier
+	codes   *auth.LoginCodeStore
 }
 
 func NewServer(
@@ -76,8 +83,12 @@ func (s *Server) Router() *gin.Engine {
 
 	v1 := r.Group("/v1")
 	{
-		v1.POST("/register", s.register)
-		v1.POST("/login", s.login)
+		// Google sign-in: browser redirects, so no bearer token is involved.
+		v1.GET("/auth/config", s.authConfig)
+		v1.GET("/auth/google/start", s.googleStart)
+		v1.GET("/auth/google/callback", s.googleCallback)
+		// The dashboard redeems the callback's one-time code for a session.
+		v1.POST("/auth/exchange", s.exchangeLoginCode)
 		v1.POST("/token/refresh", s.refreshToken)
 		// OAuth provider redirect target; identity rides in the signed state.
 		v1.GET("/integrations/:integration/callback", s.integrationCallback)
