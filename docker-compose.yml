@@ -160,7 +160,8 @@ services:
 
   web:
     build:
-      context: ./apps/web
+      context: .
+      dockerfile: apps/web/Dockerfile
     depends_on:
       - core
     environment:

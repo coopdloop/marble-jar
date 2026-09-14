@@ -1,0 +1,9 @@
+.git
+.pi
+.env
+.env.*
+*.tsbuildinfo
+**/node_modules
+**/dist
+services/core/bin
+services/core/*.db

@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils";
 
 // Single source of truth: the markdown lives in /docs at the repo root and is
 // inlined at build time.
-import overviewMd from "../../../../docs/index.md?raw";
-import gettingStartedMd from "../../../../docs/getting-started.md?raw";
-import sendingMarblesMd from "../../../../docs/sending-marbles.md?raw";
-import integrationsMd from "../../../../docs/integrations.md?raw";
-import configurationMd from "../../../../docs/configuration.md?raw";
-import apiMd from "../../../../docs/api.md?raw";
+import overviewMd from "@docs/index.md?raw";
+import gettingStartedMd from "@docs/getting-started.md?raw";
+import sendingMarblesMd from "@docs/sending-marbles.md?raw";
+import integrationsMd from "@docs/integrations.md?raw";
+import configurationMd from "@docs/configuration.md?raw";
+import apiMd from "@docs/api.md?raw";
 
 marked.use({ gfm: true });
 
