@@ -7,12 +7,18 @@ All routes live under `/v1` and accept either a session JWT (web UI) or an
 
 | Method & path | Notes |
 | --- | --- |
-| `POST /v1/register` | email, password, org name. First user = admin. |
-| `POST /v1/login` | Returns user, org, access + refresh tokens. |
+| `GET /v1/auth/config` | Which sign-in methods this server has configured. |
+| `GET /v1/auth/google/start` | 302 to Google. Optional `?workspace=<slug-or-uuid>` joins that workspace as `member`. |
+| `GET /v1/auth/google/callback` | Google's redirect target; answers with a 60-second single-use `login_code`. |
+| `POST /v1/auth/exchange` | `{login_code}` → user, org, access + refresh tokens. |
 | `POST /v1/token/refresh` | Rotates the pair. |
 | `GET /v1/me` | Current principal. |
 | `POST /v1/token/introspect` | Validate a token. |
 | `GET/POST /v1/api-keys`, `DELETE /v1/api-keys/:id` | `mj_` keys with scopes. |
+
+There is no password endpoint: humans arrive through Google, and the ID token's
+signature, `iss`, `aud`, expiry and `email_verified` are all checked server-side
+before a session is issued.
 
 ## Ingestion
 

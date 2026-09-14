@@ -22,6 +22,28 @@ in-process fallbacks so a laptop needs only Postgres.
 | `PHOENIX_API_KEY` | | — | |
 | `DEV_MODE` | | `false` | Relaxes the ✔* requirements. Do not ship. |
 
+## Sign in with Google
+
+Human accounts use Google's OpenID Connect authorization code flow; Marble Jar
+stores no passwords. Agents keep using `mj_` API keys, so the credentials below
+are only needed to sign in to the dashboard.
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `GOOGLE_OAUTH_CLIENT_ID` | ✔ | OAuth client ID (type **Web application**) from Google Cloud → APIs & Services → Credentials. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | ✔ | The matching client secret. |
+| `GOOGLE_OAUTH_ALLOWED_DOMAINS` | | Comma-separated Workspace domains. Unset = any Google account with a verified email. |
+
+The redirect URI must be `PUBLIC_API_BASE_URL + /v1/auth/google/callback`, e.g.
+`http://localhost:8080/v1/auth/google/callback`. Without the credentials the
+callback endpoints answer `501` and the sign-in page says so rather than
+failing quietly.
+
+Signing in provisions on first use: a verified Google account with no local row
+gets its own workspace (it becomes `owner`), unless the flow started with
+`?workspace=<slug-or-uuid>`, which adds them as `member`. An account whose email
+already exists is linked to that row instead, keeping its role and history.
+
 ## OBO / OAuth (see [Integrations & OBO](./integrations.md))
 
 | Variable | Notes |

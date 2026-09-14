@@ -48,13 +48,18 @@ REDPANDA_BROKERS='localhost:9092' \
 JWT_SIGNING_KEY='dev-signing-key-at-least-32-bytes-long!' \
 HMAC_DISPATCH_SECRET='dev-dispatch-secret' \
 PHOENIX_BASE_URL='http://localhost:6006' \
+GOOGLE_OAUTH_CLIENT_ID='...' GOOGLE_OAUTH_CLIENT_SECRET='...' \
+GOOGLE_OAUTH_ALLOWED_DOMAINS='your-corp.com' \
+PUBLIC_API_BASE_URL='http://localhost:8080' \
 go run ./cmd/server
 
 # 3. Frontend
 cd apps/web && npm install && npm run dev     # http://localhost:5173
 ```
 
-Register at <http://localhost:5173/login>, then create an API key under
+Sign in with Google at <http://localhost:5173/login> (set
+`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` in `.env` — see
+[`env.example`](env.example)), then create an API key under
 **Settings → API keys** and log your first marble:
 
 ```bash
@@ -142,7 +147,7 @@ All routes are under `/v1` and accept either a session JWT or an `mj_` API key.
 | Dispatch | `GET /dispatches`, `POST /dispatches/:id/result`, `POST /dispatches/:id/replay` |
 | Audit | `GET /audit-log` |
 | Analytics | `GET /trends/cost`, `/trends/tokens`, `/jar/status` |
-| Auth | `/register`, `/login`, `/token/refresh`, `/api-keys`, `/integrations/*` |
+| Auth | `/auth/google/*`, `/auth/exchange`, `/token/refresh`, `/api-keys`, `/integrations/*` |
 | Ops | `GET /health`, `GET /metrics` (Prometheus) |
 
 ### Rule conditions

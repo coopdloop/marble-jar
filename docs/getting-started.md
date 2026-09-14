@@ -16,10 +16,16 @@ cd apps/web && npm install && npm run dev   # http://localhost:5173
 `DEV_MODE=true` relaxes the secret-strength checks for local play; without it
 set `JWT_SIGNING_KEY` (32+ bytes) and `HMAC_DISPATCH_SECRET`.
 
-## 2. Register and sign in
+## 2. Sign in with Google
 
-Open <http://localhost:5173/login>, register with an email, password and
-organization name. The first user of an organization is its admin.
+Put `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in `.env` (see
+[Configuration](./configuration.md) for the credentials to create), restart the
+stack, then open <http://localhost:5173/login> and click **Sign in with
+Google**. There are no passwords: the first account to sign in is provisioned
+with its own workspace and owns it.
+
+Accounts created under the old email/password flow can no longer sign in, so
+clear them once with `make reset-users`.
 
 ## 3. Create an API key
 
