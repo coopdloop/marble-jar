@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -7,11 +7,12 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
-import { useState } from "react";
-import { ArrowUpDown, ExternalLink } from "lucide-react";
+import { ArrowUpDown, Check, Copy, ExternalLink } from "lucide-react";
 import type { Marble } from "@/lib/types";
+import { marbleIngestCurl } from "@/lib/curl";
 import {
   cn,
+  copyToClipboard,
   formatCost,
   formatDuration,
   formatRelative,
@@ -32,7 +33,20 @@ interface MarbleTableProps {
 
 export function MarbleTable({ marbles, isLoading, onRowClick, draggable }: MarbleTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copyTimer = useRef<number | null>(null);
   const setDragMarble = useUiStore((s) => s.setDragMarble);
+
+  useEffect(() => () => {
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+  }, []);
+
+  const copyIngestCurl = useCallback(async (m: Marble) => {
+    if (!(await copyToClipboard(marbleIngestCurl(m)))) return;
+    setCopiedId(m.id);
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopiedId(null), 1800);
+  }, []);
 
   const columns = useMemo<ColumnDef<Marble>[]>(
     () => [
@@ -106,24 +120,46 @@ export function MarbleTable({ marbles, isLoading, onRowClick, draggable }: Marbl
         ),
       },
       {
-        id: "trace",
+        id: "actions",
         header: "",
-        cell: ({ row }) =>
-          row.original.phoenix_trace_url ? (
-            <a
-              href={row.original.phoenix_trace_url}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="text-muted-foreground transition-colors hover:text-primary"
-              title="View trace in Phoenix"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          ) : null,
+        cell: ({ row }) => {
+          const m = row.original;
+          const copied = copiedId === m.id;
+          return (
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void copyIngestCurl(m);
+                }}
+                className="text-muted-foreground transition-colors hover:text-primary"
+                title={copied ? "Ingest curl copied to clipboard" : "Copy curl that logs this marble"}
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </button>
+              {m.phoenix_trace_url ? (
+                <a
+                  href={m.phoenix_trace_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-muted-foreground transition-colors hover:text-primary"
+                  title="View trace in Phoenix"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              ) : null}
+            </div>
+          );
+        },
       },
     ],
-    [],
+    [copiedId, copyIngestCurl],
   );
 
   const table = useReactTable({

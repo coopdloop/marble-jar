@@ -42,6 +42,35 @@ export function totalTokens(m: Marble): number {
 }
 
 /**
+ * Clipboard write with a fallback: the async API needs a secure context, so
+ * plain-http dev tunnels and older browsers still get a working copy button.
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the legacy path.
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Marble colors are semantic: hue is derived from the model (or project) so the
  * same agent always drops the same color into the jar.
  */
