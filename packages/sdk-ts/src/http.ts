@@ -67,7 +67,13 @@ export class HttpClient {
     const url = new URL(this.config.baseUrl + path);
     for (const [key, value] of Object.entries(query ?? {})) {
       if (value === undefined || value === null || value === "") continue;
-      url.searchParams.set(key, String(value));
+      // Multi-value filters go out comma-separated, which is what the API's
+      // list endpoints accept for ?status=.
+      const text = Array.isArray(value)
+        ? value.filter((v) => v !== undefined && v !== null && v !== "").join(",")
+        : String(value);
+      if (text === "") continue;
+      url.searchParams.set(key, text);
     }
     return url.toString();
   }

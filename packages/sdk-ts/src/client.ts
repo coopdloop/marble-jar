@@ -444,7 +444,11 @@ export class MonitorClient {
     });
   }
 
-  async dispatches(filters: { status?: string; limit?: number } = {}) {
+  /**
+   * `status` accepts one status or several — the API matches any of them, e.g.
+   * `["failed", "dead_lettered"]` for a stuck-work view.
+   */
+  async dispatches(filters: { status?: string | string[]; limit?: number } = {}) {
     return this.http.request<PaginatedResponse<Dispatch>>("/v1/dispatches", { query: filters });
   }
 
