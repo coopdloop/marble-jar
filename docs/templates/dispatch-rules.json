@@ -1,0 +1,55 @@
+{
+  "_readme": "Dispatch-rule presets for Marble Jar. Install with:  jq -c '.rules[]' dispatch-rules.json | while read -r rule; do curl -sS -X POST \"$MARBLE_JAR_URL/v1/rules\" -H \"Authorization: Bearer $MARBLE_JAR_API_KEY\" -H 'Content-Type: application/json' -d \"$rule\"; done  — needs a key with rules:write. Preview any condition first with POST /v1/rules/test. Fields: project, model, agent, status, source, summary, cost_usd, tokens_in, tokens_out, tokens_total, duration_ms. Operators: eq, neq, gt, gte, lt, lte, contains, in, exists. Combine with all / any / not. Replace the target_config placeholders before installing.",
+  "rules": [
+    {
+      "name": "Expensive marbles go to #eng-costs",
+      "condition": {
+        "all": [
+          { "field": "cost_usd", "op": "gt", "value": 0.5 },
+          { "field": "status", "op": "neq", "value": "failed" }
+        ]
+      },
+      "target_type": "slack",
+      "target_config": { "channel": "#eng-costs" },
+      "is_active": true
+    },
+    {
+      "name": "Failed work opens a Jira bug",
+      "condition": { "field": "status", "op": "eq", "value": "failed" },
+      "target_type": "jira",
+      "target_config": { "project_key": "PAY" },
+      "is_active": true
+    },
+    {
+      "name": "Anything touching payments gets a Teams post",
+      "condition": { "field": "project", "op": "eq", "value": "payments-api" },
+      "target_type": "teams",
+      "target_config": { "channel": "payments-team" },
+      "is_active": true
+    },
+    {
+      "name": "Security-sensitive summaries go to the internal webhook",
+      "condition": {
+        "any": [
+          { "field": "summary", "op": "contains", "value": "auth" },
+          { "field": "summary", "op": "contains", "value": "secret" }
+        ]
+      },
+      "target_type": "webhook",
+      "target_config": { "url": "https://example.com/marble-jar/security" },
+      "is_active": true
+    },
+    {
+      "name": "Long runs are reviewed by a human",
+      "condition": {
+        "all": [
+          { "field": "duration_ms", "op": "gt", "value": 1800000 },
+          { "field": "tokens_total", "op": "gt", "value": 200000 }
+        ]
+      },
+      "target_type": "slack",
+      "target_config": { "channel": "#agent-review" },
+      "is_active": false
+    }
+  ]
+}

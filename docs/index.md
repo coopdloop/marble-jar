@@ -35,6 +35,8 @@ auditable.
 - **New here?** Start with the guided tour (above, in the app) or
   [Getting started](./getting-started.md).
 - **Connecting agents:** [Sending marbles](./sending-marbles.md).
+- **Starter files for harnesses, hooks and CI:**
+  [Templates](./templates.md).
 - **Wiring up Jira/Slack/Teams:** [Integrations & OBO](./integrations.md) —
   including `OAUTH_ISSUER_URL` and friends.
 - **Every environment variable:** [Configuration](./configuration.md).

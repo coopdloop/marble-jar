@@ -1,0 +1,78 @@
+# marble-jar-ci.yml — report every CI run as a marble.
+#
+# Copy into .github/workflows/. Needs repository secrets:
+#   MARBLE_JAR_API_KEY   (scopes: marbles:write, rollups:write)
+# and optionally a MARBLE_JAR_URL repository variable for self-hosted jars.
+#
+# The run id is the idempotency key, so re-running a workflow never double
+# counts, and continue-on-error means reporting cannot break a build.
+
+name: marble-jar-report
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      MARBLE_JAR_URL: ${{ vars.MARBLE_JAR_URL || 'https://jar.example.com' }}
+      MARBLE_JAR_API_KEY: ${{ secrets.MARBLE_JAR_API_KEY }}
+      MJ_PROJECT: ${{ github.event.repository.name }}
+      MJ_AGENT: github-actions
+      MJ_SOURCE: ci
+    steps:
+      - name: Log this run in the jar
+        id: log
+        run: |
+          RUN='${{ toJSON(github.event.workflow_run) }}'
+          printf '%s' "$RUN" > run.json
+          CONCLUSION=$(jq -r .conclusion run.json)
+          NAME=$(jq -r .name run.json)
+          STATUS=$([ "$CONCLUSION" = success ] && echo logged || echo failed)
+          START=$(jq -r .run_started_at run.json)
+          END=$(jq -r .updated_at run.json)
+          DURATION_MS=$(( ( $(date -d "$END" +%s) - $(date -d "$START" +%s) ) * 1000 ))
+
+          BODY=$(jq -nc \
+            --arg s "$NAME" \
+            --arg st "$STATUS" \
+            --arg run "$(jq -r .html_url run.json)" \
+            --arg sha "$(jq -r .head_sha run.json)" \
+            --arg branch "$(jq -r .head_branch run.json)" \
+            --arg conclusion "$CONCLUSION" \
+            --argjson ms "${DURATION_MS:-0}" \
+            '{summary: $s, status: $st, source: "ci", duration_ms: $ms,
+              metadata: {run_url: $run, commit: $sha, branch: $branch,
+                         conclusion: $conclusion}}')
+
+          RESP=$(curl -sS -X POST "$MARBLE_JAR_URL/v1/marbles" \
+            -H "Authorization: Bearer $MARBLE_JAR_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Idempotency-Key: ci-$GITHUB_RUN_ID" \
+            -d "$BODY")
+
+          echo "marble_id=$(jq -r .marble_id <<< "$RESP")" >> "$GITHUB_OUTPUT"
+
+      - name: Attach the usage rollup
+        if: steps.log.outputs.marble_id != ''
+        run: |
+          # Feed whatever your runner knows here. Cost centres usually learn real
+          # token counts only at this point, which is what rollups exist for.
+          curl -sS -X POST "$MARBLE_JAR_URL/v1/marbles/${{ steps.log.outputs.marble_id }}/rollups" \
+            -H "Authorization: Bearer $MARBLE_JAR_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"trace_id": "'"$GITHUB_RUN_ID"'"}'
+
+      - name: Put the jar state in the job summary
+        run: |
+          curl -sS "$MARBLE_JAR_URL/v1/jar/status" \
+            -H "Authorization: Bearer $MARBLE_JAR_API_KEY" \
+            | jq -r '"**Marble Jar** — \(.marbles_total) marbles, \(.streak_days)-day streak, \(.marbles_today) today. Pending dispatches: \(.pending_dispatches). Open objectives: \(.open_objectives)."' \
+            >> "$GITHUB_STEP_SUMMARY"

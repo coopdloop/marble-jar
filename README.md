@@ -29,6 +29,7 @@ Built from [`product.json`](./product.json).
 including an interactive guided tour. Key pages:
 [getting started](./docs/getting-started.md) ·
 [integrations & OBO](./docs/integrations.md) (`OAUTH_ISSUER_URL` and friends) ·
+[templates](./docs/templates.md) ·
 [configuration](./docs/configuration.md) ·
 [API reference](./docs/api.md).
 
