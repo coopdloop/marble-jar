@@ -94,7 +94,7 @@ Targets: `jira` (target config = project key), `slack` / `teams` (channel),
 
 | Method & path | Notes |
 | --- | --- |
-| `GET/POST /v1/webhook-endpoints`, `DELETE /v1/webhook-endpoints/:id` | Inbound URLs external systems can POST marbles to. |
+| `GET/POST /v1/webhook-endpoints`, `DELETE /v1/webhook-endpoints/:id` | Admin-only registry of *outbound* webhook targets. The HMAC signing secret is returned once, at creation, and deliveries are signed with `X-MarbleJar-Signature`. |
 
 ## Analytics & ops
 
