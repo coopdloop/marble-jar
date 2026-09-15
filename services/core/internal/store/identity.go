@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -296,8 +297,19 @@ func (s *Store) ListAgents(ctx context.Context, orgID string) ([]Agent, error) {
 }
 
 // ---------- oauth connections (OBO) ----------
+//
+// Access and refresh tokens are sealed with the store's token box before they
+// touch the database and opened again on read, so callers always handle
+// plaintext while the rows hold ciphertext. The columns keep their
+// *_token_encrypted names, which is what they now actually contain.
 
-func (s *Store) UpsertOAuthConnection(ctx context.Context, orgID, userID, provider, accountID, accessEnc string, refreshEnc *string, scopes []string, expiresAt *time.Time) (*OAuthConnection, error) {
+func (s *Store) UpsertOAuthConnection(ctx context.Context, orgID, userID, provider, accountID, accessToken string, refreshToken *string, scopes []string, expiresAt *time.Time) (*OAuthConnection, error) {
+	var sealedRefresh *string
+	if refreshToken != nil {
+		sealed := s.tokens.Seal(*refreshToken)
+		sealedRefresh = &sealed
+	}
+
 	var c OAuthConnection
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO oauth_connections (
@@ -307,41 +319,120 @@ func (s *Store) UpsertOAuthConnection(ctx context.Context, orgID, userID, provid
 		RETURNING id, organization_id, user_id, provider, provider_account_id,
 		          access_token_encrypted, refresh_token_encrypted, scopes, expires_at,
 		          created_at, updated_at`,
-		orgID, userID, provider, nullable(accountID), accessEnc, refreshEnc, scopes, expiresAt,
+		orgID, userID, provider, nullable(accountID), s.tokens.Seal(accessToken), sealedRefresh, scopes, expiresAt,
 	).Scan(&c.ID, &c.OrganizationID, &c.UserID, &c.Provider, &c.ProviderAccountID,
-		&c.AccessTokenEncrypted, &c.RefreshTokenEncrypted, &c.Scopes, &c.ExpiresAt,
+		&c.AccessToken, &c.RefreshToken, &c.Scopes, &c.ExpiresAt,
 		&c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	if err := s.openOAuthConnection(ctx, &c); err != nil {
+		return nil, err
+	}
 	return &c, nil
+}
+
+// UpdateOAuthConnectionTokens replaces the tokens on the connection that reads
+// back as current — the newest row for (org, user, provider), matching
+// GetOAuthConnection's own tie-break.
+func (s *Store) UpdateOAuthConnectionTokens(ctx context.Context, orgID, userID, provider, accessToken string, refreshToken *string, expiresAt *time.Time) error {
+	args := []any{
+		orgID, userID, provider,
+		s.tokens.Seal(accessToken),
+		expiresAt,
+	}
+	// A provider that does not rotate the refresh token sends back "", and the
+	// stored one stays in play.
+	setClause := "refresh_token_encrypted = refresh_token_encrypted"
+	if refreshToken != nil && *refreshToken != "" {
+		setClause = "refresh_token_encrypted = $6"
+		args = append(args, s.tokens.Seal(*refreshToken))
+	}
+
+	tag, err := s.pool.Exec(ctx, fmt.Sprintf(`
+		UPDATE oauth_connections
+		   SET access_token_encrypted = $4,
+		       %s,
+		           expires_at = $5,
+		       updated_at = NOW()
+		 WHERE id = (SELECT id FROM oauth_connections
+		           WHERE organization_id = $1 AND user_id = $2 AND provider = $3
+		           ORDER BY created_at DESC LIMIT 1)`, setClause),
+		args...)
+	if err != nil {
+		return mapErr(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) GetOAuthConnection(ctx context.Context, orgID, userID, provider string) (*OAuthConnection, error) {
 	var c OAuthConnection
-	err := s.pool.QueryRow(ctx, `
-		SELECT id, organization_id, user_id, provider, provider_account_id,
-		       access_token_encrypted, refresh_token_encrypted, scopes, expires_at,
-		       created_at, updated_at
-		FROM oauth_connections
+	err := s.pool.QueryRow(ctx, oauthConnectionSelect+`
 		WHERE organization_id = $1 AND user_id = $2 AND provider = $3
 		ORDER BY created_at DESC LIMIT 1`,
 		orgID, userID, provider,
 	).Scan(&c.ID, &c.OrganizationID, &c.UserID, &c.Provider, &c.ProviderAccountID,
-		&c.AccessTokenEncrypted, &c.RefreshTokenEncrypted, &c.Scopes, &c.ExpiresAt,
+		&c.AccessToken, &c.RefreshToken, &c.Scopes, &c.ExpiresAt,
 		&c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	if err := s.openOAuthConnection(ctx, &c); err != nil {
+		return nil, err
+	}
 	return &c, nil
 }
 
-func (s *Store) ListOAuthConnections(ctx context.Context, orgID, userID string) ([]OAuthConnection, error) {
-	rows, err := s.pool.Query(ctx, `
+const oauthConnectionSelect = `
 		SELECT id, organization_id, user_id, provider, provider_account_id,
 		       access_token_encrypted, refresh_token_encrypted, scopes, expires_at,
 		       created_at, updated_at
-		FROM oauth_connections WHERE organization_id = $1 AND user_id = $2`,
+		FROM oauth_connections`
+
+// openOAuthConnection decrypts a row in place and transparently upgrades rows
+// written before a token key existed, so an instance can adopt encryption
+// without a migration sweep or a downtime window.
+func (s *Store) openOAuthConnection(ctx context.Context, c *OAuthConnection) error {
+	access, upgradeAccess, err := s.tokens.Open(c.AccessToken)
+	if err != nil {
+		return err
+	}
+	c.AccessToken = access
+
+	upgradeRefresh := false
+	if c.RefreshToken != nil {
+		refresh, needsUpgrade, err := s.tokens.Open(*c.RefreshToken)
+		if err != nil {
+			return err
+		}
+		*c.RefreshToken = refresh
+		upgradeRefresh = needsUpgrade
+	}
+
+	if (upgradeAccess || upgradeRefresh) && s.tokens != nil {
+		sealedRefresh := c.RefreshToken
+		if sealedRefresh != nil {
+			sealed := s.tokens.Seal(*sealedRefresh)
+			sealedRefresh = &sealed
+		}
+		if _, err := s.pool.Exec(ctx, `
+			UPDATE oauth_connections
+			   SET access_token_encrypted = $2, refresh_token_encrypted = $3, updated_at = NOW()
+			 WHERE id = $1`,
+			c.ID, s.tokens.Seal(c.AccessToken), sealedRefresh); err != nil {
+			// The row stays plaintext and the next read retries the upgrade; a
+			// bookkeeping failure must not break the caller's dispatch.
+		}
+	}
+	return nil
+}
+
+func (s *Store) ListOAuthConnections(ctx context.Context, orgID, userID string) ([]OAuthConnection, error) {
+	rows, err := s.pool.Query(ctx, oauthConnectionSelect+`
+		WHERE organization_id = $1 AND user_id = $2`,
 		orgID, userID)
 	if err != nil {
 		return nil, mapErr(err)
@@ -352,8 +443,11 @@ func (s *Store) ListOAuthConnections(ctx context.Context, orgID, userID string) 
 	for rows.Next() {
 		var c OAuthConnection
 		if err := rows.Scan(&c.ID, &c.OrganizationID, &c.UserID, &c.Provider,
-			&c.ProviderAccountID, &c.AccessTokenEncrypted, &c.RefreshTokenEncrypted,
+			&c.ProviderAccountID, &c.AccessToken, &c.RefreshToken,
 			&c.Scopes, &c.ExpiresAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if err := s.openOAuthConnection(ctx, &c); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

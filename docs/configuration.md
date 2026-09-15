@@ -60,6 +60,7 @@ honoured (`https://host/api` registers `https://host/api/v1/auth/google/callback
 | `SLACK_OAUTH_CLIENT_ID` / `SLACK_OAUTH_CLIENT_SECRET` | Slack app (user scope `chat:write`). |
 | `ATLASSIAN_OAUTH_CLIENT_ID` / `ATLASSIAN_OAUTH_CLIENT_SECRET` | Jira OAuth app. |
 | `ENTRA_ID_TENANT_ID` / `ENTRA_ID_CLIENT_ID` / `ENTRA_ID_CLIENT_SECRET` | Teams via Microsoft Entra ID. |
+| `OAUTH_TOKEN_KEY` | base64 32-byte AES-256-GCM key sealing provider tokens at rest. **Same value in core and the worker.** Empty = plaintext storage plus a startup warning. Generate: `openssl rand -base64 32`. |
 | `OAUTH_ISSUER_URL` | Optional RFC 8693 fallback broker (Auth0/Keycloak — **Hydra does not implement the exchange grant**). Alias `HYDRA_ISSUER_URL`. |
 | `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` | Client at the broker. Aliases `HYDRA_CLIENT_ID` / `HYDRA_CLIENT_SECRET`. |
 | `HYDRA_SECRETS_SYSTEM` | The Hydra container's own secret (docker compose). |

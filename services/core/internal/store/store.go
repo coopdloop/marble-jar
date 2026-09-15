@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/marble-jar/marble-jar/services/core/internal/secrets"
 	"github.com/marble-jar/marble-jar/services/core/migrations"
 )
 
@@ -25,9 +26,20 @@ var (
 // objectives, rules, dispatches and audit history.
 type Store struct {
 	pool *pgxpool.Pool
+	// tokens seals provider access/refresh tokens at rest. Nil means the
+	// instance has no OAUTH_TOKEN_KEY and stores them as received.
+	tokens *secrets.Box
 }
 
-func New(ctx context.Context, dsn string) (*Store, error) {
+// Option customises a Store at construction.
+type Option func(*Store)
+
+// WithTokenBox enables encryption of third-party provider tokens at rest.
+func WithTokenBox(box *secrets.Box) Option {
+	return func(s *Store) { s.tokens = box }
+}
+
+func New(ctx context.Context, dsn string, opts ...Option) (*Store, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
@@ -48,7 +60,11 @@ func New(ctx context.Context, dsn string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
-	return &Store{pool: pool}, nil
+	s := &Store{pool: pool}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s, nil
 }
 
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }

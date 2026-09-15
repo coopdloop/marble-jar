@@ -182,15 +182,17 @@ type TrendPoint struct {
 }
 
 type OAuthConnection struct {
-	ID                    string     `json:"id" db:"id"`
-	OrganizationID        string     `json:"organization_id" db:"organization_id"`
-	UserID                string     `json:"user_id" db:"user_id"`
-	Provider              string     `json:"provider" db:"provider"`
-	ProviderAccountID     *string    `json:"provider_account_id" db:"provider_account_id"`
-	AccessTokenEncrypted  string     `json:"-" db:"access_token_encrypted"`
-	RefreshTokenEncrypted *string    `json:"-" db:"refresh_token_encrypted"`
-	Scopes                []string   `json:"scopes" db:"scopes"`
-	ExpiresAt             *time.Time `json:"expires_at" db:"expires_at"`
-	CreatedAt             time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt             time.Time  `json:"updated_at" db:"updated_at"`
+	ID                string  `json:"id" db:"id"`
+	OrganizationID    string  `json:"organization_id" db:"organization_id"`
+	UserID            string  `json:"user_id" db:"user_id"`
+	Provider          string  `json:"provider" db:"provider"`
+	ProviderAccountID *string `json:"provider_account_id" db:"provider_account_id"`
+	// AccessToken and RefreshToken are plaintext in memory and sealed in the
+	// database; json:"-" keeps them out of every API response.
+	AccessToken  string     `json:"-" db:"access_token_encrypted"`
+	RefreshToken *string    `json:"-" db:"refresh_token_encrypted"`
+	Scopes       []string   `json:"scopes" db:"scopes"`
+	ExpiresAt    *time.Time `json:"expires_at" db:"expires_at"`
+	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
 }

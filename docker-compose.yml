@@ -108,6 +108,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       REDPANDA_BROKERS: redpanda:29092
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-signing-key-at-least-32-bytes-long!}
+      OAUTH_TOKEN_KEY: ${OAUTH_TOKEN_KEY:-}
       HMAC_DISPATCH_SECRET: ${HMAC_DISPATCH_SECRET:-dev-dispatch-secret-change-me}
       PHOENIX_BASE_URL: http://phoenix:6006
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
@@ -116,6 +117,11 @@ services:
       OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-dev-hydra-client-secret}
       SLACK_OAUTH_CLIENT_ID: ${SLACK_OAUTH_CLIENT_ID:-}
       SLACK_OAUTH_CLIENT_SECRET: ${SLACK_OAUTH_CLIENT_SECRET:-}
+      ATLASSIAN_OAUTH_CLIENT_ID: ${ATLASSIAN_OAUTH_CLIENT_ID:-}
+      ATLASSIAN_OAUTH_CLIENT_SECRET: ${ATLASSIAN_OAUTH_CLIENT_SECRET:-}
+      ENTRA_ID_TENANT_ID: ${ENTRA_ID_TENANT_ID:-}
+      ENTRA_ID_CLIENT_ID: ${ENTRA_ID_CLIENT_ID:-}
+      ENTRA_ID_CLIENT_SECRET: ${ENTRA_ID_CLIENT_SECRET:-}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOOGLE_OAUTH_ALLOWED_DOMAINS: ${GOOGLE_OAUTH_ALLOWED_DOMAINS:-}
@@ -139,10 +145,21 @@ services:
       CORE_API_BASE_URL: http://core:8080
       CORE_SERVICE_TOKEN: ${CORE_SERVICE_TOKEN:-set-me-to-an-mj-api-key}
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-dev-signing-key-at-least-32-bytes-long!}
+      # Must match core: it seals the tokens it writes, the worker opens them.
+      OAUTH_TOKEN_KEY: ${OAUTH_TOKEN_KEY:-}
       HMAC_DISPATCH_SECRET: ${HMAC_DISPATCH_SECRET:-dev-dispatch-secret-change-me}
       OAUTH_ISSUER_URL: http://hydra:4444
       OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID:-marble-jar}
       OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-dev-hydra-client-secret}
+      # The worker refreshes stored provider tokens, so it needs each app's
+      # client credentials, not just the issuer's.
+      SLACK_OAUTH_CLIENT_ID: ${SLACK_OAUTH_CLIENT_ID:-}
+      SLACK_OAUTH_CLIENT_SECRET: ${SLACK_OAUTH_CLIENT_SECRET:-}
+      ATLASSIAN_OAUTH_CLIENT_ID: ${ATLASSIAN_OAUTH_CLIENT_ID:-}
+      ATLASSIAN_OAUTH_CLIENT_SECRET: ${ATLASSIAN_OAUTH_CLIENT_SECRET:-}
+      ENTRA_ID_TENANT_ID: ${ENTRA_ID_TENANT_ID:-}
+      ENTRA_ID_CLIENT_ID: ${ENTRA_ID_CLIENT_ID:-}
+      ENTRA_ID_CLIENT_SECRET: ${ENTRA_ID_CLIENT_SECRET:-}
       DISPATCH_WORKER_CONCURRENCY: "4"
       WORKER_PORT: "8081"
     ports:

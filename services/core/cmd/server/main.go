@@ -20,6 +20,7 @@ import (
 	"github.com/marble-jar/marble-jar/services/core/internal/marbles"
 	"github.com/marble-jar/marble-jar/services/core/internal/objectives"
 	"github.com/marble-jar/marble-jar/services/core/internal/realtime"
+	"github.com/marble-jar/marble-jar/services/core/internal/secrets"
 	"github.com/marble-jar/marble-jar/services/core/internal/store"
 	"github.com/marble-jar/marble-jar/services/core/internal/telemetry"
 )
@@ -42,7 +43,15 @@ func run() error {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	st, err := store.New(ctx, cfg.DatabaseURL)
+	tokenBox, err := secrets.New(cfg.OAuthTokenKey)
+	if err != nil {
+		return err
+	}
+	if tokenBox == nil {
+		log.Warn("OAUTH_TOKEN_KEY unset — provider OAuth tokens are stored in plaintext")
+	}
+
+	st, err := store.New(ctx, cfg.DatabaseURL, store.WithTokenBox(tokenBox))
 	if err != nil {
 		return err
 	}

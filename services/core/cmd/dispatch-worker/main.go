@@ -18,6 +18,7 @@ import (
 	"github.com/marble-jar/marble-jar/services/core/internal/config"
 	"github.com/marble-jar/marble-jar/services/core/internal/dispatch"
 	"github.com/marble-jar/marble-jar/services/core/internal/eventbus"
+	"github.com/marble-jar/marble-jar/services/core/internal/secrets"
 	"github.com/marble-jar/marble-jar/services/core/internal/store"
 )
 
@@ -52,14 +53,29 @@ func run() error {
 	oboProvider := dispatch.NewOBOProvider(
 		cfg.OAuthIssuerURL, cfg.OAuthClientID, cfg.OAuthClientSecret, log)
 
+	tokenBox, err := secrets.New(cfg.OAuthTokenKey)
+	if err != nil {
+		return fmt.Errorf("token key: %w", err)
+	}
+	if tokenBox == nil {
+		log.Warn("OAUTH_TOKEN_KEY unset — provider OAuth tokens are read and stored in plaintext")
+	}
+
 	// Connected provider accounts are the real credentials; the issuer's
 	// RFC 8693 exchange is the fallback when no connection exists.
-	st, err := store.New(ctx, cfg.DatabaseURL)
+	st, err := store.New(ctx, cfg.DatabaseURL, store.WithTokenBox(tokenBox))
 	if err != nil {
 		return fmt.Errorf("connect store: %w", err)
 	}
 	defer st.Close()
-	tokens := &connectionFirstTokens{store: st, obo: oboProvider}
+	tokens := &connectionFirstTokens{
+		store:     st,
+		obo:       oboProvider,
+		refresh:   dispatch.NewRefresher(),
+		appCreds:  providerCreds(cfg),
+		log:       log,
+		expiryGap: time.Minute,
+	}
 
 	worker := dispatch.NewWorker(dispatch.WorkerConfig{
 		CoreBaseURL:  coreURL,
@@ -152,23 +168,98 @@ func serveHealth(ctx context.Context, port string, log *slog.Logger) {
 
 // connectionFirstTokens resolves dispatch credentials: the stored provider
 // connection for the acting user first (a real Slack/Atlassian/Entra token),
-// falling back to the configured issuer's OBO token exchange.
+// refreshing it when the provider says it is about to expire, and falling back
+// to the configured issuer's OBO token exchange only when no connection exists.
 type connectionFirstTokens struct {
-	store *store.Store
-	obo   *dispatch.OBOProvider
+	store     *store.Store
+	obo       *dispatch.OBOProvider
+	refresh   *dispatch.Refresher
+	appCreds  func(provider string) (clientID, clientSecret string)
+	log       *slog.Logger
+	expiryGap time.Duration
 }
 
 func (t *connectionFirstTokens) OBOToken(ctx context.Context, orgID string, userID *string, provider string) (string, error) {
-	if userID != nil && *userID != "" {
-		conn, err := t.store.GetOAuthConnection(ctx, orgID, *userID, provider)
-		if err == nil && conn.AccessTokenEncrypted != "" {
-			return conn.AccessTokenEncrypted, nil
-		}
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			return "", err
-		}
+	if userID == nil || *userID == "" {
+		return t.obo.OBOToken(ctx, orgID, userID, provider)
 	}
-	return t.obo.OBOToken(ctx, orgID, userID, provider)
+
+	conn, err := t.store.GetOAuthConnection(ctx, orgID, *userID, provider)
+	if errors.Is(err, store.ErrNotFound) {
+		return t.obo.OBOToken(ctx, orgID, userID, provider)
+	}
+	if err != nil {
+		return "", err
+	}
+	if conn.AccessToken == "" {
+		return t.obo.OBOToken(ctx, orgID, userID, provider)
+	}
+
+	if !t.expiringSoon(conn.ExpiresAt) || conn.RefreshToken == nil || *conn.RefreshToken == "" {
+		return conn.AccessToken, nil
+	}
+
+	clientID, clientSecret := t.appCreds(provider)
+	res, err := t.refresh.Refresh(ctx, provider, clientID, clientSecret, *conn.RefreshToken)
+	if err != nil {
+		// A dead grant is not something the queue can wait out: report it now so
+		// the dispatch dead-letters with a message that says "reconnect" instead
+		// of failing later with an opaque 401 from the provider API.
+		var permanent dispatch.PermanentError
+		if errors.As(err, &permanent) {
+			return "", fmt.Errorf("%s connection for the acting user can no longer be refreshed: %w", provider, err)
+		}
+		// The stored token may still be valid, and the issuer fallback may work,
+		// so a provider blip must not stop this dispatch.
+		t.log.Warn("token refresh failed; using stored token",
+			"provider", provider, "acting_user_id", *userID, "error", err)
+		return conn.AccessToken, nil
+	}
+
+	rotated := res.RefreshToken
+	next := &rotated
+	if rotated == "" {
+		next = nil // provider did not rotate: UpdateOAuthConnectionTokens keeps the old one
+	}
+	var expiresAt *time.Time
+	if res.ExpiresIn > 0 {
+		at := time.Now().UTC().Add(res.ExpiresIn)
+		expiresAt = &at
+	}
+	if err := t.store.UpdateOAuthConnectionTokens(ctx, orgID, *userID, provider,
+		res.AccessToken, next, expiresAt); err != nil {
+		t.log.Warn("could not persist refreshed token", "provider", provider, "error", err)
+	}
+	t.log.Info("refreshed provider token", "provider", provider, "acting_user_id", *userID)
+	return res.AccessToken, nil
+}
+
+// expiringSoon treats a missing expiry as "never": Slack and Atlassian both hand
+// out long-lived tokens with no expires_at, and those must keep working.
+func (t *connectionFirstTokens) expiringSoon(expiresAt *time.Time) bool {
+	if expiresAt == nil {
+		return false
+	}
+	gap := t.expiryGap
+	if gap <= 0 {
+		gap = time.Minute
+	}
+	return time.Now().UTC().Add(gap).After(expiresAt.UTC())
+}
+
+// providerCreds maps an integration onto the OAuth app configured for it.
+func providerCreds(cfg *config.Config) func(string) (string, string) {
+	return func(provider string) (string, string) {
+		switch provider {
+		case "slack":
+			return cfg.SlackClientID, cfg.SlackClientSecret
+		case "jira":
+			return cfg.AtlassianClientID, cfg.AtlassianClientSecret
+		case "teams":
+			return cfg.EntraClientID, cfg.EntraClientSecret
+		}
+		return "", ""
+	}
 }
 
 func envOr(key, fallback string) string {

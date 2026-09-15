@@ -109,6 +109,51 @@ Audiences: Jira → `https://api.atlassian.com`, Slack →
 `https://slack.com/api`, Teams → `https://graph.microsoft.com`. Tokens are
 cached until 30 s before expiry, so a busy rule doesn't hammer the issuer.
 
+> ⚠️ The exchange fallback expects an issuer that accepts the acting user's
+> identity as a subject token. Marble Jar currently sends the **user ID** there,
+> which a spec-compliant issuer rejects — so treat this path as unproven until
+> it is exercised against a real Auth0/Keycloak tenant. Stored connections (the
+> path above it) do not depend on any of this.
+
+## Stored tokens: encryption and refresh
+
+Everything a Connect flow obtains — provider access token, refresh token,
+scopes, expiry — lands in `oauth_connections`, and that table is read by the
+worker on every dispatch. Two things protect it:
+
+**Encryption at rest.** Set `OAUTH_TOKEN_KEY` to a base64 32-byte key
+(`openssl rand -base64 32`) and tokens are sealed with AES-256-GCM before they
+reach Postgres, then opened on read. Both core and the dispatch worker must see
+the **same** key, because the worker reads back what the API wrote.
+
+- Rows written before a key existed keep working: reading one returns the
+  plaintext and re-seals it in place, so adoption needs no migration and no
+  downtime.
+- Without the key, values are stored exactly as the provider sent them and both
+  processes log a warning at startup. The columns are named
+  `*_token_encrypted` either way.
+- A wrong or rotated key fails closed — dispatches error out rather than
+  handing an executor a ciphertext blob as a bearer token. Keep a backup before
+  rotating.
+- Tokens never appear in an API response: the model tags them `json:"-"`.
+
+**Refresh before expiry.** Provider access tokens are short-lived (Microsoft
+graph tokens last about an hour). When a stored connection is within a minute
+of `expires_at`, the worker redeems the refresh token at the provider's own
+token endpoint — Slack `oauth.v2.access`, Atlassian `/oauth/token` with Basic
+client auth, Entra `/common/oauth2/v2.0/token` — stores the new pair and
+continues the dispatch. That needs each provider's client credentials in the
+**worker's** environment, not just core's.
+
+When a provider says the grant is dead (`invalid_grant`, revoked app, consent
+withdrawn) the dispatch fails permanently with a *reconnect required* message
+rather than retrying a hundred times, and it appears on the Dispatches page.
+Transport blips and 429/5xx stay retryable, and if a refresh fails for a token
+that is not yet expired the worker still uses what it has.
+
+Slack and Atlassian commonly hand out tokens with no expiry; those rows carry no
+`expires_at`, are never refreshed, and keep working until they actually break.
+
 ## Local Hydra (optional)
 
 ```bash
@@ -131,8 +176,9 @@ hand: `docker compose exec postgres psql -U marblejar -c 'CREATE DATABASE hydra;
 
 **Failure semantics:** a 429/5xx from the issuer marks the dispatch retryable
 (normal backoff); a 4xx marks it permanent (dead-letter, replayable from the
-UI once fixed). A dispatch with no acting user fails loudly instead of falling
-back to a shared credential.
+Dispatches page once fixed). The same split applies to a failed token refresh.
+A dispatch with no acting user fails loudly instead of falling back to a shared
+credential.
 
 ## No broker? Webhooks still work
 

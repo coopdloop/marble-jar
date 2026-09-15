@@ -28,6 +28,9 @@ type Config struct {
 	// GoogleAllowedDomains restricts sign-in to these Workspace domains.
 	// Empty means any Google account with a verified email may sign in.
 	GoogleAllowedDomains []string
+	// OAuthTokenKey base64-encodes a 32-byte AES-256-GCM key used to seal
+	// provider access and refresh tokens at rest. Empty stores them as received.
+	OAuthTokenKey string
 	// Per-provider OAuth apps used by the integration connect flow.
 	SlackClientID         string
 	SlackClientSecret     string
@@ -67,6 +70,7 @@ func Load() (*Config, error) {
 		GoogleClientID:        env("GOOGLE_OAUTH_CLIENT_ID", ""),
 		GoogleClientSecret:    env("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		GoogleAllowedDomains:  splitList(env("GOOGLE_OAUTH_ALLOWED_DOMAINS", "")),
+		OAuthTokenKey:         env("OAUTH_TOKEN_KEY", ""),
 		SlackClientID:         env("SLACK_OAUTH_CLIENT_ID", ""),
 		SlackClientSecret:     env("SLACK_OAUTH_CLIENT_SECRET", ""),
 		AtlassianClientID:     env("ATLASSIAN_OAUTH_CLIENT_ID", ""),
