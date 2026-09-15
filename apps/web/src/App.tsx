@@ -5,6 +5,9 @@ import { LiveQueuePage } from "@/pages/LiveQueue";
 import { ObjectivesPage } from "@/pages/Objectives";
 import { ObjectiveDetailPage } from "@/pages/ObjectiveDetail";
 import { RulesPage } from "@/pages/Rules";
+import { InsightsPage } from "@/pages/Insights";
+import { DispatchesPage } from "@/pages/Dispatches";
+import { AuditLogPage } from "@/pages/AuditLog";
 import { IntegrationsPage } from "@/pages/Integrations";
 import { SettingsPage } from "@/pages/Settings";
 import { DocsPage } from "@/pages/Docs";
@@ -40,6 +43,9 @@ export default function App() {
         <Route path="/objectives" element={<ObjectivesPage />} />
         <Route path="/objectives/:objectiveId" element={<ObjectiveDetailPage />} />
         <Route path="/rules" element={<RulesPage />} />
+        <Route path="/insights" element={<InsightsPage />} />
+        <Route path="/dispatches" element={<DispatchesPage />} />
+        <Route path="/audit" element={<AuditLogPage />} />
         <Route path="/integrations" element={<IntegrationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/docs" element={<DocsPage />} />

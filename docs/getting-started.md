@@ -93,3 +93,26 @@ the page records who did what, when.
 Leave the Queue page open on a second screen. The WebSocket feed pushes new
 marbles the moment agents report them; the header pill shows `Live` while the
 socket is connected and falls back to polling otherwise.
+
+## 11. Read the numbers back
+
+**Insights** charts spend, tokens and marble volume over a rolling window. Cut
+it by interval (hour/day/week), window length, project, objective or model —
+useful for "what did the agents cost us this week, and where did it go?"
+
+## 12. Triage what did not land
+
+**Dispatches** is the stuck-work queue: anything that failed or was
+dead-lettered, with the provider's error message next to it. (Rows that are
+`retrying` are still being worked, and the server refuses to replay them — as
+well as anything already succeeded.) Hit **Replay** to re-queue one after you
+fix the cause (bad channel, expired OBO token, endpoint down). Succeeded rows
+stay visible so the external ref is one click away.
+
+## 13. Prove who did what
+
+**Audit log** is the full on-behalf-of trail — provider, action, the agent
+identity that triggered it and the human it acted as. Filter by provider or
+action, or paste a marble / dispatch ID for an exact lookup, and expand a row to
+see the payload that went out. Credential-shaped fields (webhook URLs, tokens,
+secrets) are redacted before they ever reach the log.

@@ -256,11 +256,19 @@ export const marbleJarApi = {
     }>("/v1/rules/test", { method: "POST", body: { condition, sample } }),
 
   // dispatches + audit
+  // Pass `status` as a comma-separated list to match several states at once.
   listDispatches: (params: Record<string, unknown> = {}) =>
     api<Paginated<Dispatch>>("/v1/dispatches", { query: params }),
 
+  getDispatch: (id: string) => api<Dispatch>(`/v1/dispatches/${id}`),
+
+  replayDispatch: (id: string) =>
+    api<Dispatch>(`/v1/dispatches/${id}/replay`, { method: "POST" }),
+
   listAudit: (params: Record<string, unknown> = {}) =>
     api<Paginated<AuditEntry>>("/v1/audit-log", { query: params }),
+
+  getAuditEntry: (id: string) => api<AuditEntry>(`/v1/audit-log/${id}`),
 
   // analytics
   jarStatus: () => api<JarStatus>("/v1/jar/status"),
