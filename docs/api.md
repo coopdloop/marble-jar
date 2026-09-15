@@ -32,7 +32,7 @@ server-side before a session is issued. Agents keep using `mj_` API keys.
 
 | Method & path | Notes |
 | --- | --- |
-| `GET /v1/marbles` | Filters: `project`, `model`, `agent_id`, `status`, `q`, `from`, `unassigned`, `objective_id`, pagination. |
+| `GET /v1/marbles` | Filters: `project`, `model`, `agent_id`, `status`, `q`, `from`, `unassigned`, `objective_id`, pagination. `q` is a case-insensitive substring match over summary, project, agent, model and source. |
 | `GET /v1/marbles/:id` | Marble plus its dispatch history. |
 | `PATCH /v1/marbles/:id` | Edit summary/status/objective/metadata. |
 | `DELETE /v1/marbles/:id` | |
@@ -80,6 +80,7 @@ Targets: `jira` (target config = project key), `slack` / `teams` (channel),
 | `POST /v1/dispatches/:id/replay` | Re-queue failed, dead-lettered or stale-pending dispatches. `409` when the row is not replayable. |
 | `GET /v1/audit-log`, `GET /v1/audit-log/:id` | Who did what, when. Filters: `provider`, `action`, `marble_id`, `dispatch_id`. Audit `details` are written with credential fields redacted — a target config keeps routing metadata (channel, project key) but never its webhook URL or secret. |
 
+
 ## Integrations (OBO)
 
 | Method & path | Notes |
@@ -99,7 +100,7 @@ Targets: `jira` (target config = project key), `slack` / `teams` (channel),
 
 | Method & path | Notes |
 | --- | --- |
-| `GET /v1/jar/status` | Today/last-hour counts, spend, tokens, open objectives. |
+| `GET /v1/jar/status` | Today/last-hour counts, spend, tokens, open objectives, plus `daily` (14 zero-filled UTC buckets) and `streak_days`. |
 | `GET /v1/trends/cost`, `GET /v1/trends/tokens` | Time series. `interval` (hour/day/week/month), `days`, `project_id`, `objective_id`, `model`. Both are the same aggregate — pick either. |
 | `GET /v1/projects`, `GET /v1/agents` | Filter vocabularies. |
 | `GET /health` | Liveness + DB + WS connection count. |
