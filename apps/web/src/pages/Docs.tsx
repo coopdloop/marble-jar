@@ -3,6 +3,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { BookOpen } from "lucide-react";
 import { Walkthrough } from "@/components/docs/Walkthrough";
+import { TemplateLibrary } from "@/components/docs/TemplateLibrary";
 import { cn } from "@/lib/utils";
 
 // Single source of truth: the markdown lives in /docs at the repo root and is
@@ -13,6 +14,7 @@ import sendingMarblesMd from "@docs/sending-marbles.md?raw";
 import integrationsMd from "@docs/integrations.md?raw";
 import configurationMd from "@docs/configuration.md?raw";
 import apiMd from "@docs/api.md?raw";
+import templatesMd from "@docs/templates.md?raw";
 
 marked.use({ gfm: true });
 
@@ -30,6 +32,7 @@ const SECTIONS: DocSection[] = [
   { id: "integrations", label: "Integrations & OBO", md: integrationsMd },
   { id: "configuration", label: "Configuration", md: configurationMd },
   { id: "api", label: "API reference", md: apiMd },
+  { id: "templates", label: "Starter templates", md: templatesMd },
 ];
 
 /** Relative .md links (./getting-started.md) become in-app section links. */
@@ -89,6 +92,11 @@ export function DocsPage() {
             <div className="space-y-5">
               <Walkthrough />
               <DocBody html={renderMarkdown(gettingStartedMd)} onClick={onContentClick} />
+            </div>
+          ) : active.id === "templates" ? (
+            <div className="space-y-5">
+              <TemplateLibrary />
+              {html ? <DocBody html={html} onClick={onContentClick} /> : null}
             </div>
           ) : html ? (
             <DocBody html={html} onClick={onContentClick} />
