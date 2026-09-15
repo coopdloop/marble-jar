@@ -134,9 +134,38 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
       jarBottom,
     };
 
-    // Click-to-open: map the clicked point back to a marble id.
+    // Click-and-hold drag: marbles are grabbable, flingable, just for fun.
+    const mouse = Matter.Mouse.create(render.canvas);
+    const mouseConstraint = Matter.MouseConstraint.create(engine, {
+      mouse,
+      constraint: { stiffness: 0.2, damping: 0.1, render: { visible: false } },
+    });
+    Matter.Composite.add(engine.world, mouseConstraint);
+
+    const handleStartDrag = (ev: unknown) => {
+      const body = (ev as { body?: Matter.Body }).body;
+      // Only marbles are grabbable — never the jar walls.
+      if (!body || !bodyMarbleIds.current.has(body.id)) {
+        mouseConstraint.constraint.bodyB = null;
+        return;
+      }
+      render.canvas.style.cursor = "grabbing";
+    };
+    const handleEndDrag = () => {
+      render.canvas.style.cursor = "grab";
+    };
+    Matter.Events.on(mouseConstraint, "startdrag", handleStartDrag);
+    Matter.Events.on(mouseConstraint, "enddrag", handleEndDrag);
+
+    // Click-to-open: map the clicked point back to a marble id. A click that
+    // travelled is a drag release, not an intent to open the detail sheet.
+    let downPos: { x: number; y: number } | null = null;
+    const handleDown = (ev: MouseEvent) => {
+      downPos = { x: ev.clientX, y: ev.clientY };
+    };
     const handleClick = (ev: MouseEvent) => {
       if (!onMarbleClick) return;
+      if (downPos && Math.hypot(ev.clientX - downPos.x, ev.clientY - downPos.y) > 6) return;
       const rect = render.canvas.getBoundingClientRect();
       const point = { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
       const hits = Matter.Query.point(Matter.Composite.allBodies(engine.world), point);
@@ -148,8 +177,9 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
         }
       }
     };
+    render.canvas.addEventListener("mousedown", handleDown);
     render.canvas.addEventListener("click", handleClick);
-    render.canvas.style.cursor = "pointer";
+    render.canvas.style.cursor = "grab";
 
     // Keep the canvas crisp and the jar centered on resize.
     const resizeObserver = new ResizeObserver(() => {
@@ -166,7 +196,11 @@ export function JarCanvas({ marbles, onMarbleClick, className }: JarCanvasProps)
 
     return () => {
       resizeObserver.disconnect();
+      render.canvas.removeEventListener("mousedown", handleDown);
       render.canvas.removeEventListener("click", handleClick);
+      Matter.Events.off(mouseConstraint, "startdrag", handleStartDrag);
+      Matter.Events.off(mouseConstraint, "enddrag", handleEndDrag);
+      Matter.Mouse.clearSourceEvents(mouse);
       Matter.Events.off(render, "afterRender", drawStyledMarbles);
       Matter.Render.stop(render);
       Matter.Runner.stop(runner);
