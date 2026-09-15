@@ -148,6 +148,9 @@ function safeParse(text: string): unknown {
   }
 }
 
+/** Upper bound for cursor-walking bulk reads such as CSV export. */
+const MAX_EXPORT_MARBLES = 2000;
+
 /** Typed endpoint surface consumed by TanStack Query hooks. */
 export const marbleJarApi = {
   // auth — Google sign-in is the only human credential; passwords are gone.
@@ -183,6 +186,26 @@ export const marbleJarApi = {
 
   listMarbles: (params: Record<string, unknown> = {}) =>
     api<Paginated<Marble>>("/v1/marbles", { query: params }),
+
+  /**
+   * Walks the cursor pages for a filter set so an export covers every match,
+   * not just the page currently on screen. Capped to keep a stray filter from
+   * turning into an unbounded download.
+   */
+  listAllMarbles: async (params: Record<string, unknown> = {}, max = MAX_EXPORT_MARBLES) => {
+    const limit = 200;
+    const items: Marble[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const page = await api<Paginated<Marble>>("/v1/marbles", {
+        query: { ...params, limit, cursor },
+      });
+      items.push(...page.items);
+      if (!page.next_cursor || page.items.length === 0 || items.length >= max) break;
+      cursor = page.next_cursor;
+    }
+    return items.slice(0, max);
+  },
 
   getMarble: (id: string) =>
     api<{ marble: Marble; dispatches: Dispatch[] }>(`/v1/marbles/${id}`),

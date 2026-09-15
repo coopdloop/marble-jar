@@ -121,6 +121,12 @@ export interface TrendPoint {
   duration_ms: number;
 }
 
+export interface JarDay {
+  day: string;
+  marbles: number;
+  cost_usd: number;
+}
+
 export interface JarStatus {
   marbles_total: number;
   marbles_today: number;
@@ -130,6 +136,9 @@ export interface JarStatus {
   open_objectives: number;
   pending_dispatches: number;
   top_models: string[];
+  /** Always 14 UTC days, oldest first, gaps zero-filled. */
+  daily: JarDay[];
+  streak_days: number;
 }
 
 export interface User {

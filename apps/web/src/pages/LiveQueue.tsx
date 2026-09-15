@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, X } from "lucide-react";
+import { Download, Search, X } from "lucide-react";
 import { marbleJarApi } from "@/lib/api";
 import { EmptyJarState, JarCanvas } from "@/components/jar/JarCanvas";
+import { JarStreak } from "@/components/jar/JarStreak";
 import { MarbleTable } from "@/components/marbles/MarbleTable";
 import { MarbleSheet } from "@/components/marbles/MarbleSheet";
 import { Button, Card, Input, Select, Stat } from "@/components/ui/primitives";
 import { emptyFilters, useUiStore } from "@/stores/useAppStore";
+import { csvFilename, downloadTextFile, marblesToCsv } from "@/lib/export";
 import { formatCost, formatTokens, rangeToFrom } from "@/lib/utils";
 
 export function LiveQueuePage() {
@@ -43,6 +46,28 @@ export function LiveQueuePage() {
   const marbles = data?.items ?? [];
   const hasFilters = JSON.stringify(filters) !== JSON.stringify(emptyFilters);
 
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Exports everything the current filters match, walking cursors so the file
+  // is not limited to the page on screen.
+  async function exportCsv() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const items = await marbleJarApi.listAllMarbles(query);
+      if (items.length === 0) {
+        setExportError("Nothing matched these filters.");
+        return;
+      }
+      downloadTextFile(csvFilename(filters.project || filters.q || undefined), marblesToCsv(items));
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -59,6 +84,9 @@ export function LiveQueuePage() {
             <Stat label="Tokens today" value={formatTokens(status.tokens_today)} />
             <Stat label="Open objectives" value={status.open_objectives} hint={`${status.pending_dispatches} dispatches pending`} />
           </div>
+        ) : null}
+        {status?.daily?.length ? (
+          <JarStreak daily={status.daily} streakDays={status.streak_days} />
         ) : null}
       </div>
 
@@ -78,7 +106,7 @@ export function LiveQueuePage() {
           <Input
             value={filters.q}
             onChange={(e) => setFilter("q", e.target.value)}
-            placeholder="Search summaries…"
+            placeholder="Search summaries, projects, agents…"
             className="pl-8"
           />
         </div>
@@ -118,6 +146,15 @@ export function LiveQueuePage() {
           <option value="30d">Last 30 days</option>
           <option value="all">All time</option>
         </Select>
+
+        <Button variant="outline" size="sm" onClick={() => void exportCsv()} disabled={exporting}>
+          <Download className="h-3.5 w-3.5" />
+          {exporting ? "Exporting…" : "Export CSV"}
+        </Button>
+
+        {exportError ? (
+          <span className="text-xs text-destructive">{exportError}</span>
+        ) : null}
 
         {hasFilters ? (
           <Button variant="ghost" size="sm" onClick={resetFilters}>
