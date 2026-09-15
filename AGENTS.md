@@ -75,7 +75,8 @@ the environment; check it exists before offering a PR. Default remote is
 - `services/core` — Go modular monolith (API + dispatch worker), tests via
   `go test ./...` (skips without Postgres unless `MARBLEJAR_TEST_DATABASE_URL`).
 - `services/mcp-bridge` — Python MCP server.
-- `apps/web` — React/TS frontend, `npm run typecheck`.
+- `apps/web` — React/TS frontend, `npm run typecheck` and `npm test`
+  (vitest, specs under `apps/web/test`).
 - `packages/sdk-ts` — TS client, `npm run typecheck`.
 - `docs/` — documentation, rendered in-app at `/docs`.
 - `deploy/` — deployment manifests.

@@ -1,7 +1,7 @@
 COMPOSE := docker compose
 
 .PHONY: dev dev-build down restart logs ps clean reset-users \
-	test-core typecheck-web typecheck-sdk check
+	test-core test-web typecheck-web typecheck-sdk check
 
 # --- Dev stack ---------------------------------------------------------------
 
@@ -51,7 +51,10 @@ test-core:
 typecheck-web:
 	cd apps/web && npm run typecheck
 
+test-web:
+	cd apps/web && npm test
+
 typecheck-sdk:
 	cd packages/sdk-ts && npm run typecheck
 
-check: test-core typecheck-web typecheck-sdk
+check: test-core test-web typecheck-web typecheck-sdk
