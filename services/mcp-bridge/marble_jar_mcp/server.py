@@ -87,8 +87,9 @@ MONITOR_TOOLS = [
         name="get_jar_status",
         description=(
             "Get the current state of the marble jar: total/today/last-hour marble "
-            "counts, spend and token usage today, open objectives, pending dispatches "
-            "and the most-used models."
+            "counts, spend and token usage today, open objectives, pending dispatches, "
+            "the most-used models, a 14-day daily activity series and the current "
+            "consecutive-day streak."
         ),
         inputSchema={"type": "object", "properties": {}},
     ),

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -211,6 +212,16 @@ func scanTrend(rows pgx.Rows) ([]TrendPoint, error) {
 	return out, rows.Err()
 }
 
+// JarDay is one UTC day in the jar's recent activity series.
+type JarDay struct {
+	Day     string  `json:"day"` // YYYY-MM-DD
+	Marbles int     `json:"marbles"`
+	CostUSD float64 `json:"cost_usd"`
+}
+
+// JarStatusDays is the length of the activity series returned by JarStatus.
+const JarStatusDays = 14
+
 // JarStatus powers the monitor MCP's get_jar_status tool.
 type JarStatus struct {
 	MarblesTotal   int      `json:"marbles_total"`
@@ -221,6 +232,9 @@ type JarStatus struct {
 	OpenObjectives int      `json:"open_objectives"`
 	PendingDisp    int      `json:"pending_dispatches"`
 	TopModels      []string `json:"top_models"`
+	// Daily is always JarStatusDays buckets, oldest first, gaps zero-filled.
+	Daily      []JarDay `json:"daily"`
+	StreakDays int      `json:"streak_days"`
 }
 
 func (s *Store) JarStatus(ctx context.Context, orgID string) (*JarStatus, error) {
@@ -258,5 +272,79 @@ func (s *Store) JarStatus(ctx context.Context, orgID string) (*JarStatus, error)
 		}
 		j.TopModels = append(j.TopModels, m)
 	}
-	return &j, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := s.jarDailyActivity(ctx, orgID, &j); err != nil {
+		return nil, err
+	}
+	return &j, nil
+}
+
+// jarDailyActivity fills the last JarStatusDays day-buckets, gaps included, so
+// the UI can draw a sparkline without interpolating holes itself.
+func (s *Store) jarDailyActivity(ctx context.Context, orgID string, j *JarStatus) error {
+	from := utcDayStart(time.Now().UTC()).AddDate(0, 0, -(JarStatusDays - 1))
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT to_char(date_trunc('day', occurred_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+		       COUNT(*), COALESCE(SUM(cost_usd), 0)
+		FROM marbles
+		WHERE organization_id = $1 AND occurred_at >= $2
+		GROUP BY 1 ORDER BY 1`, orgID, from)
+	if err != nil {
+		return mapErr(err)
+	}
+	defer rows.Close()
+
+	byDay := map[string]JarDay{}
+	for rows.Next() {
+		var (
+			day  string
+			n    int64
+			cost float64
+		)
+		if err := rows.Scan(&day, &n, &cost); err != nil {
+			return err
+		}
+		byDay[day] = JarDay{Day: day, Marbles: int(n), CostUSD: cost}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	today := utcDayStart(time.Now().UTC())
+	j.Daily = make([]JarDay, 0, JarStatusDays)
+	counts := make([]int, 0, JarStatusDays)
+	for i := JarStatusDays - 1; i >= 0; i-- {
+		key := today.AddDate(0, 0, -i).Format(time.DateOnly)
+		day := JarDay{Day: key}
+		if hit, ok := byDay[key]; ok {
+			day = hit
+		}
+		j.Daily = append(j.Daily, day)
+		counts = append(counts, day.Marbles)
+	}
+	j.StreakDays = dailyStreak(counts)
+	return nil
+}
+
+// dailyStreak counts consecutive recent days with at least one marble. Today is
+// skipped while still empty, so the streak survives until midnight rather than
+// breaking every morning.
+func dailyStreak(counts []int) int {
+	i := len(counts) - 1
+	if i >= 0 && counts[i] == 0 {
+		i--
+	}
+	streak := 0
+	for ; i >= 0 && counts[i] > 0; i-- {
+		streak++
+	}
+	return streak
+}
+
+func utcDayStart(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
