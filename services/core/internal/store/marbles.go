@@ -157,6 +157,13 @@ func (s *Store) GetMarble(ctx context.Context, orgID, id string) (*Marble, error
 	return scanMarble(row)
 }
 
+// likePattern turns free text into a substring ILIKE pattern. LIKE
+// metacharacters in the query are escaped so "%" or "_" stay literal.
+func likePattern(s string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+	return "%" + escaped + "%"
+}
+
 // ListMarblesFilter mirrors the query params on GET /v1/marbles.
 type ListMarblesFilter struct {
 	Project     string
@@ -201,8 +208,15 @@ func (s *Store) ListMarbles(ctx context.Context, orgID string, f ListMarblesFilt
 	if f.Status != "" {
 		add("m.status = $%d", f.Status)
 	}
-	if f.Search != "" {
-		add("m.summary ILIKE '%%' || $%d || '%%'", f.Search)
+	if q := strings.TrimSpace(f.Search); q != "" {
+		// One pattern is reused across every searched column, so a query finds a
+		// marble by what happened, who it happened on, or what ran it. The %[1]d
+		// indexing is what lets a single placeholder repeat.
+		add(`(m.summary ILIKE $%[1]d
+			OR COALESCE(p.name, '') ILIKE $%[1]d
+			OR COALESCE(a.name, '') ILIKE $%[1]d
+			OR COALESCE(m.model, '') ILIKE $%[1]d
+			OR COALESCE(m.source, '') ILIKE $%[1]d)`, likePattern(q))
 	}
 	if f.From != nil {
 		add("m.occurred_at >= $%d", *f.From)
