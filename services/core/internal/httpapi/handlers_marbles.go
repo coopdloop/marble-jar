@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -280,6 +281,20 @@ func queryInt(c *gin.Context, key string, fallback int) int {
 		return v
 	}
 	return fallback
+}
+
+// queryCSV reads a multi-value filter, accepting both comma-separated and
+// repeated params (?status=a,b and ?status=a&status=b), and drops blanks.
+func queryCSV(c *gin.Context, key string) []string {
+	var out []string
+	for _, raw := range c.QueryArray(key) {
+		for _, part := range strings.Split(raw, ",") {
+			if p := strings.TrimSpace(part); p != "" {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
 }
 
 func queryTime(c *gin.Context, key string) (time.Time, bool) {

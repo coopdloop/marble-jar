@@ -230,6 +230,108 @@ func TestReplayDispatch_TerminalAndStale(t *testing.T) {
 	}
 }
 
+// The dead-letter view asks for several terminal states at once.
+func TestListDispatches_StatusSet(t *testing.T) {
+	org := newOrg(t)
+	ctx := context.Background()
+
+	ids := map[string]string{}
+	for _, status := range []string{"failed", "dead_lettered", "succeeded"} {
+		d, err := testDB.CreateDispatch(ctx, store.CreateDispatchParams{
+			OrganizationID:  org,
+			IntegrationType: "slack",
+			Action:          "post_message",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := store.DispatchResultParams{Status: status}
+		if status != "succeeded" {
+			msg := "provider rejected the request"
+			result.ErrorMessage = &msg
+		}
+		got, err := testDB.RecordDispatchResult(ctx, org, d.ID, result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[status] = got.ID
+	}
+
+	seen := func(t *testing.T, items []store.Dispatch) map[string]bool {
+		t.Helper()
+		found := map[string]bool{}
+		for _, d := range items {
+			found[d.ID] = true
+		}
+		return found
+	}
+
+	stuck, _, err := testDB.ListDispatches(ctx, org, store.ListDispatchesFilter{
+		Statuses: []string{"failed", "dead_lettered"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := seen(t, stuck)
+	if !got[ids["failed"]] || !got[ids["dead_lettered"]] {
+		t.Fatalf("status set missed a stuck dispatch: %+v", got)
+	}
+	if got[ids["succeeded"]] {
+		t.Fatal("status set leaked a succeeded dispatch")
+	}
+
+	// Single-status filtering still works, and Statuses wins when both are set.
+	alone, _, err := testDB.ListDispatches(ctx, org, store.ListDispatchesFilter{Status: "succeeded"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(alone) != 1 || alone[0].ID != ids["succeeded"] {
+		t.Fatalf("single status filter = %d rows, want the one succeeded dispatch", len(alone))
+	}
+
+	both, _, err := testDB.ListDispatches(ctx, org, store.ListDispatchesFilter{
+		Status:   "succeeded",
+		Statuses: []string{"failed"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(both) != 1 || both[0].ID != ids["failed"] {
+		t.Fatalf("Statuses did not take precedence over Status: %+v", seen(t, both))
+	}
+
+	// The triage page walks cursors while a status set is active, so paging and
+	// filtering have to compose: one row per page, no repeats, no gaps.
+	page1, next, err := testDB.ListDispatches(ctx, org, store.ListDispatchesFilter{
+		Statuses: []string{"failed", "dead_lettered"},
+		Limit:    1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1) != 1 || next == "" {
+		t.Fatalf("first page = %d rows, cursor %q; want 1 row and a cursor", len(page1), next)
+	}
+	page2, next2, err := testDB.ListDispatches(ctx, org, store.ListDispatchesFilter{
+		Statuses: []string{"failed", "dead_lettered"},
+		Limit:    1,
+		Cursor:   next,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page2) != 1 || next2 != "" {
+		t.Fatalf("second page = %d rows, cursor %q; want 1 row and no cursor", len(page2), next2)
+	}
+	if page1[0].ID == page2[0].ID {
+		t.Fatalf("cursor returned the same row twice: %s", page1[0].ID)
+	}
+	if !seen(t, append(page1, page2...))[ids["failed"]] ||
+		!seen(t, append(page1, page2...))[ids["dead_lettered"]] {
+		t.Fatalf("cursor walk missed a stuck dispatch: %s %s", page1[0].ID, page2[0].ID)
+	}
+}
+
 func TestRulesCRUD(t *testing.T) {
 	org := newOrg(t)
 	ctx := context.Background()

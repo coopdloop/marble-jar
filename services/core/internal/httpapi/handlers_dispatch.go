@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,9 +13,16 @@ import (
 // GET /v1/dispatches
 func (s *Server) listDispatches(c *gin.Context) {
 	p := mustPrincipal(c)
+
+	statuses, err := dispatchStatusFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	items, next, err := s.store.ListDispatches(c.Request.Context(), p.OrganizationID,
 		store.ListDispatchesFilter{
-			Status:          c.Query("status"),
+			Statuses:        statuses,
 			IntegrationType: c.Query("integration_type"),
 			MarbleID:        c.Query("marble_id"),
 			ObjectiveID:     c.Query("objective_id"),
@@ -26,6 +34,22 @@ func (s *Server) listDispatches(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "next_cursor": next})
+}
+
+// dispatchStatusFilter parses ?status= against the dispatch state machine. An
+// unknown value is answered with a 400 rather than an empty page, because a
+// triage view that quietly matches nothing reads as a healthy system.
+func dispatchStatusFilter(c *gin.Context) ([]string, error) {
+	statuses := queryCSV(c, "status")
+	if len(statuses) > len(validDispatchStatuses) {
+		return nil, fmt.Errorf("too many status values (max %d)", len(validDispatchStatuses))
+	}
+	for _, st := range statuses {
+		if !validDispatchStatuses[st] {
+			return nil, fmt.Errorf("invalid status: %s", st)
+		}
+	}
+	return statuses, nil
 }
 
 // GET /v1/dispatches/:dispatch_id

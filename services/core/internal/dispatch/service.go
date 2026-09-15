@@ -129,10 +129,12 @@ func (s *Service) Create(ctx context.Context, p *auth.Principal, req Request) (*
 		MarbleID:       req.MarbleID,
 		DispatchID:     &d.ID,
 		Details: map[string]any{
-			"rule_id":       req.RuleID,
-			"objective_id":  req.ObjectiveID,
-			"principal":     string(p.Kind),
-			"target_config": json.RawMessage(orEmptyJSON(req.TargetConfig)),
+			"rule_id":      req.RuleID,
+			"objective_id": req.ObjectiveID,
+			"principal":    string(p.Kind),
+			// Redacted: the audit log is readable by every member of the org, and
+			// target_config carries live Slack/Teams webhook tokens.
+			"target_config": redactTargetConfig(orEmptyJSON(req.TargetConfig)),
 		},
 	}); err != nil {
 		s.log.Warn("audit record failed", "dispatch_id", d.ID, "error", err)

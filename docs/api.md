@@ -75,10 +75,10 @@ Targets: `jira` (target config = project key), `slack` / `teams` (channel),
 
 | Method & path | Notes |
 | --- | --- |
-| `GET /v1/dispatches`, `GET /v1/dispatches/:id` | Status: pending → running → succeeded / failed / dead-lettered. |
+| `GET /v1/dispatches`, `GET /v1/dispatches/:id` | Status: pending → running → succeeded / failed / dead-lettered. `status` takes a comma-separated list (`failed,dead_lettered`) or repeated params; an unknown value is a `400`. |
 | `POST /v1/dispatches/:id/result` | Worker callback (service token). |
-| `POST /v1/dispatches/:id/replay` | Re-queue failed, dead-lettered or stale-pending dispatches. |
-| `GET /v1/audit-log`, `GET /v1/audit-log/:id` | Who did what, when. |
+| `POST /v1/dispatches/:id/replay` | Re-queue failed, dead-lettered or stale-pending dispatches. `409` when the row is not replayable. |
+| `GET /v1/audit-log`, `GET /v1/audit-log/:id` | Who did what, when. Filters: `provider`, `action`, `marble_id`, `dispatch_id`. Audit `details` are written with credential fields redacted — a target config keeps routing metadata (channel, project key) but never its webhook URL or secret. |
 
 ## Integrations (OBO)
 
@@ -100,7 +100,7 @@ Targets: `jira` (target config = project key), `slack` / `teams` (channel),
 | Method & path | Notes |
 | --- | --- |
 | `GET /v1/jar/status` | Today/last-hour counts, spend, tokens, open objectives. |
-| `GET /v1/trends/cost`, `GET /v1/trends/tokens` | Time series. |
+| `GET /v1/trends/cost`, `GET /v1/trends/tokens` | Time series. `interval` (hour/day/week/month), `days`, `project_id`, `objective_id`, `model`. Both are the same aggregate — pick either. |
 | `GET /v1/projects`, `GET /v1/agents` | Filter vocabularies. |
 | `GET /health` | Liveness + DB + WS connection count. |
 | `GET /metrics` | Prometheus. |

@@ -192,7 +192,10 @@ func (s *Store) GetDispatch(ctx context.Context, orgID, id string) (*Dispatch, e
 }
 
 type ListDispatchesFilter struct {
+	// Status matches one status; Statuses matches any of several. When both are
+	// set, Statuses wins.
 	Status          string
+	Statuses        []string
 	IntegrationType string
 	MarbleID        string
 	ObjectiveID     string
@@ -210,7 +213,9 @@ func (s *Store) ListDispatches(ctx context.Context, orgID string, f ListDispatch
 		args = append(args, val)
 		where = append(where, fmt.Sprintf(clause, len(args)))
 	}
-	if f.Status != "" {
+	if len(f.Statuses) > 0 {
+		add("status = ANY($%d)", f.Statuses)
+	} else if f.Status != "" {
 		add("status = $%d", f.Status)
 	}
 	if f.IntegrationType != "" {
