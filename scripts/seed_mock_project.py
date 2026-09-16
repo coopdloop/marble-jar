@@ -15,6 +15,7 @@ Missing scopes degrade gracefully: the affected step is skipped and reported.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -357,6 +358,12 @@ def spread_times(rng, count, days):
     return sorted(out, reverse=True)
 
 
+def rng_for(key):
+    """Stable per-marble RNG so backfilled usage is reproducible across runs."""
+    digest = hashlib.md5(str(key).encode()).digest()
+    return random.Random(int.from_bytes(digest[:8], "big"))
+
+
 def iter_marbles(client, params=None, page=100):
     """Walk cursor pagination so callers can stream every matching marble."""
     cursor, done = None, set()
@@ -377,17 +384,46 @@ def iter_marbles(client, params=None, page=100):
 
 
 def assign_existing(client, theme_to_id, page, run_id):
-    """Bucket already-seeded marbles into objectives by metadata.objective_theme.
-    Lets the objectives step run after the fact, once scopes allow."""
-    moved = 0
-    for m in iter_marbles(client, {"q": run_id} if run_id else None, page):
-        theme = (m.get("metadata") or {}).get("objective_theme")
-        target = theme_to_id.get(theme)
-        if target and m.get("objective_id") != target:
-            if client.request("PATCH", f"/v1/marbles/{m['id']}",
-                              {"objective_id": target}, optional=True):
-                moved += 1
-    print(f"  assigned {moved} existing marbles to objectives")
+    """Bucket already-seeded marbles into objectives by metadata.objective_theme,
+    and backfill any that were seeded without usage. Lets the objectives step run
+    after the fact, once scopes allow. Only touches tagged marbles."""
+    prices = {name: (pin, pout) for name, pin, pout in MODELS}
+    moved = filled = seen = 0
+    theme_project = {}
+    for m in iter_marbles(client, None, page):
+        meta = m.get("metadata") or {}
+        if meta.get("objective_theme") not in theme_to_id:
+            continue
+        seen += 1
+        if m.get("project_id"):
+            theme_project.setdefault(meta["objective_theme"], m["project_id"])
+        patch = {}
+        target = theme_to_id[meta["objective_theme"]]
+        if m.get("objective_id") != target:
+            patch["objective_id"] = target
+        if m.get("cost_usd") in (None, 0) and meta.get("usage_estimated") is False:
+            price_in, price_out = prices.get(m["model"], (0.05, 0.15))
+            tin = int(rng_for(m["id"]).triangular(2_000, 60_000, 12_000))
+            tout = int(tin * rng_for(m["id"]).uniform(0.1, 0.35))
+            roll = {"tokens_in": tin, "tokens_out": tout,
+                    "cost_usd": round(tin / 1_000 * price_in + tout / 1_000 * price_out, 4),
+                    "duration_ms": int(rng_for(m["id"]).triangular(30_000, 900_000, 150_000))}
+            if client.request("POST", f"/v1/marbles/{m['id']}/rollups", roll, optional=True):
+                filled += 1
+        if patch and client.request("PATCH", f"/v1/marbles/{m['id']}", patch, optional=True):
+            moved += 1
+    # objectives carry no project until we link them from their marbles
+    linked = 0
+    for theme, oid in theme_to_id.items():
+        pid = theme_project.get(theme)
+        if not pid:
+            continue
+        cur = client.get(f"/v1/objectives/{oid}")
+        if not cur.get("project_id"):
+            if client.request("PATCH", f"/v1/objectives/{oid}", {"project_id": pid}, optional=True):
+                linked += 1
+    print(f"  scanned {seen} tagged marbles: {moved} assigned, {filled} usage backfilled, "
+          f"{linked} objectives linked to a project")
     return moved
 
 
@@ -425,10 +461,16 @@ def main():
 
     created = {"objectives": [], "marbles": [], "updates": 0, "rollups": 0}
 
-    # ---- 1. objectives ----------------------------------------------------
+    # ---- 1. objectives (create-or-reuse, so re-runs do not duplicate) ----
     if not args.no_objectives:
         print("\n== objectives ==")
+        existing = {o["title"]: o for o in client.get("/v1/objectives", {"limit": 100}).get("items", [])}
         for obj in OBJECTIVES:
+            if obj["title"] in existing:
+                o = existing[obj["title"]]
+                print(f"  = {o['id'][:8]}  {obj['title']} (existing)")
+                created["objectives"].append({"id": o["id"], "spec": obj})
+                continue
             body = {
                 "title": obj["title"],
                 "description": obj["description"],
@@ -447,18 +489,12 @@ def main():
 
     theme_to_id = {o["spec"]["title"]: o["id"] for o in created["objectives"] if o["id"]}
 
-    if args.assign_only:
-        if not theme_to_id:
-            print("no objectives created/visible; nothing to assign")
-            return 1
-        assign_existing(client, theme_to_id, args.page, args.run_id)
-        return 0
-
     # ---- 2. marbles -------------------------------------------------------
-    print(f"\n== marbles ({args.count}) ==")
-    specs = generate_specs(rng, args.count)
+    specs = [] if args.assign_only else generate_specs(rng, args.count)
+    print(f"\n== marbles ({len(specs)}) ==")
     times = spread_times(rng, args.count, args.days)
-    rollup_slots = set(rng.sample(range(args.count), min(ROLLUP_PENDING, args.count)))
+    rollup_slots = set() if args.assign_only else set(
+        rng.sample(range(args.count), min(ROLLUP_PENDING, args.count)))
     ids = []
     for i, spec in enumerate(specs):
         body = build_marble(rng, spec, i, times[i], theme_to_id.get(spec["theme"]))
@@ -477,6 +513,13 @@ def main():
         if i % 10 == 9 or i == len(specs) - 1:
             print(f"  {i + 1}/{len(specs)} logged (last: {spec['project']})")
         created["marbles"].append(m)
+
+    if args.assign_only or args.assign_existing:
+        if not theme_to_id:
+            print("  no objectives visible; nothing to assign")
+        else:
+            print("\n== assign existing ==")
+            assign_existing(client, theme_to_id, args.page, args.run_id)
 
     # ---- 3. updates: PATCH objectives and marbles ------------------------
     print("\n== updates (PATCH) ==")
@@ -544,8 +587,10 @@ def main():
             print(f"  {key}: {status[key]}")
     objectives = client.get("/v1/objectives", {"limit": 20}).get("items", [])
     for o in objectives[:10]:
-        roll = {k: v for k, v in o.items() if k.endswith(("_count", "_total", "_usd"))}
-        print(f"  {o['status']:<12} {o['title'][:38]:<38} {roll or ''}")
+        r = o.get("rollup") or {}
+        print(f"  {o['status']:<12} {o['title'][:36]:<36} "
+              f"marbles={r.get('marble_count', 0):<4} ${r.get('cost_usd', 0):<9} "
+              f"tok={r.get('total_tokens', 0):<9} budget={r.get('budget_pct_cost')}%")
     recent = client.get("/v1/marbles", {"limit": 1}).get("items", [])
     print(f"  newest marble: {recent[0]['summary'][:64] if recent else 'n/a'}")
 
