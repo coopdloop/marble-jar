@@ -8,7 +8,7 @@
 Every jar, a story you can tell your team.**
 
 [![Go](https://img.shields.io/badge/go-modular%20monolith-00ADD8?style=flat-square&logo=go&logoColor=white)](./services/core)
-[![React](https://img.shields.io/badge/react-live%20physics%20jar-61DAFB?style=flat-square&logo=react&logoColor=black)](./apps/web)
+[![React](https://img.shields.io/badge/react-live%20marble%20threads-61DAFB?style=flat-square&logo=react&logoColor=black)](./apps/web)
 [![Python](https://img.shields.io/badge/python-MCP%20bridge-3776AB?style=flat-square&logo=python&logoColor=white)](./services/mcp-bridge)
 [![Docs](https://img.shields.io/badge/docs-guided%20tour-F9AB00?style=flat-square)](./docs/index.md)
 
@@ -70,7 +70,7 @@ curl -X POST http://localhost:8080/v1/marbles \
   -d '{"summary":"Refactored the auth module","model":"claude-sonnet-4","project":"payments-api","cost_usd":0.42,"tokens":{"in":12000,"out":3000}}'
 ```
 
-It drops into the jar in real time. ✨
+It lands on the live queue in real time and links itself into the thread of work it belongs to. ✨
 
 ### Dispatch worker and MCP bridge
 
@@ -101,7 +101,7 @@ Or bring the whole stack up with `docker compose up -d`.
  └───────┬───────────────┬──────────────┬────┘
          │               │              │
    Postgres +        Redis pub/sub   Redpanda
-   TimescaleDB       (live jar)     (durable log)
+   TimescaleDB       (live queue)   (durable log)
                           │              │
                      React web     dispatch worker
                      (matter.js)    │ Jira Slack

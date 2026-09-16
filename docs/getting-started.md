@@ -47,7 +47,7 @@ curl -X POST http://localhost:8080/v1/marbles \
   -d '{"summary":"Refactored the auth module","model":"claude-sonnet-4","project":"payments-api","cost_usd":0.42,"tokens_input":12000,"tokens_output":3000,"duration_ms":45000}'
 ```
 
-Switch to the **Queue** page and watch it drop into the jar in real time.
+Switch to the **Queue** page and watch it land in real time, linking into the thread of the objective, project or agent it belongs to.
 Click any marble to open its detail sheet — cost, tokens, trace link, and its
 dispatch history.
 

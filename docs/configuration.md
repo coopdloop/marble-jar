@@ -12,7 +12,7 @@ in-process fallbacks so a laptop needs only Postgres.
 | `JWT_SIGNING_KEY` | ✔* | — | ≥ 32 bytes outside `DEV_MODE`. Signs session JWTs. |
 | `HMAC_DISPATCH_SECRET` | ✔* | — | Signs outbound webhook intents. |
 | `PORT` | | `8080` | API listen port. |
-| `REDIS_URL` | | — | Live-jar pub/sub. In-process bus when unset. |
+| `REDIS_URL` | | — | Live-queue pub/sub. In-process bus when unset. |
 | `REDPANDA_BROKERS` | | — | Comma-separated. Durable dispatch log; in-process when unset. |
 | `LOG_LEVEL` | | `info` | `debug` for noisy dev. |
 | `CORS_ORIGINS` | | `http://localhost:5173` | Comma-separated allowed origins. |

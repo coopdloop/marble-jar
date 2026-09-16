@@ -80,7 +80,7 @@ export function Walkthrough() {
     },
     {
       title: "Drop your first marble",
-      body: "A marble is one finished unit of agent work. Drop a demo one and watch it fall into the jar.",
+      body: "A marble is one finished unit of agent work. Drop a demo one and watch it land on the queue, linked to the thread it belongs to.",
       done: (marbles?.items.length ?? 0) > 0,
       action: {
         kind: "run",
@@ -119,7 +119,7 @@ export function Walkthrough() {
     },
     {
       title: "Fire a dispatch",
-      body: "Click any marble in the jar, then Dispatch from its detail sheet — one click posts the update.",
+      body: "Click any marble on the queue, then Dispatch from its detail sheet — one click posts the update.",
       done: (dispatches?.items.length ?? 0) > 0,
       action: { kind: "link", to: "/", label: "Open the Queue" },
     },

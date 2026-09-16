@@ -72,7 +72,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
 /**
  * Marble colors are semantic: hue is derived from the model (or project) so the
- * same agent always drops the same color into the jar.
+ * same agent always gets the same color on the queue.
  */
 const PALETTE = [
   "#38bdf8", // sky

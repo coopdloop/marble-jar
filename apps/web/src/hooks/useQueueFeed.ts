@@ -14,7 +14,7 @@ const MAX_BACKOFF_MS = 30_000;
 export function useQueueFeed(): void {
   const queryClient = useQueryClient();
   const setWsStatus = useUiStore((s) => s.setWsStatus);
-  const enqueueMarble = useUiStore((s) => s.enqueueMarble);
+  const enqueueArrival = useUiStore((s) => s.enqueueArrival);
 
   const socketRef = useRef<WebSocket | null>(null);
   const attemptRef = useRef(0);
@@ -35,8 +35,8 @@ export function useQueueFeed(): void {
 
         case "marble.created": {
           const marble = event.payload as Marble;
-          // Feed the physics canvas.
-          enqueueMarble(marble);
+          // Feed the constellation: the graph reveals arrivals one at a time.
+          enqueueArrival(marble);
 
           // Prepend into every cached marble list page-0 query.
           queryClient.setQueriesData<Paginated<Marble>>(
@@ -170,5 +170,5 @@ export function useQueueFeed(): void {
         socket.close();
       }
     };
-  }, [queryClient, setWsStatus, enqueueMarble]);
+  }, [queryClient, setWsStatus, enqueueArrival]);
 }

@@ -65,7 +65,7 @@ URL.
 | Field | Notes |
 | --- | --- |
 | `summary` | **Required.** One sentence of what got done. |
-| `model` | **Required.** Drives the marble's color in the jar. |
+| `model` | **Required.** Drives the marble's color in the queue. |
 | `project` | Groups marbles; feeds rule conditions. |
 | `agent` / `agent_id` / `harness` | Who/what did the work. |
 | `cost_usd` | Drives marble size; outliers get the glow. |

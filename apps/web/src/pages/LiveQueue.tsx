@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Search, X } from "lucide-react";
 import { marbleJarApi } from "@/lib/api";
-import { EmptyJarState, JarCanvas } from "@/components/jar/JarCanvas";
-import { JarStreak } from "@/components/jar/JarStreak";
+import { EmptyGraphState, MarbleGraph } from "@/components/graph/MarbleGraph";
+import { DailyStreak } from "@/components/graph/DailyStreak";
 import { MarbleTable } from "@/components/marbles/MarbleTable";
 import { MarbleSheet } from "@/components/marbles/MarbleSheet";
 import { Button, Card, Input, Select, Stat } from "@/components/ui/primitives";
@@ -43,6 +43,17 @@ export function LiveQueuePage() {
     staleTime: 60_000,
   });
 
+  // Threads are named after their objective, so the graph needs the titles.
+  const { data: objectives } = useQuery({
+    queryKey: ["objectives", "labels"],
+    queryFn: () => marbleJarApi.listObjectives({ limit: 100 }),
+    staleTime: 60_000,
+  });
+  const objectiveLabels = useMemo(
+    () => Object.fromEntries((objectives?.items ?? []).map((o) => [o.id, o.title])),
+    [objectives],
+  );
+
   const marbles = data?.items ?? [];
   const hasFilters = JSON.stringify(filters) !== JSON.stringify(emptyFilters);
 
@@ -74,7 +85,7 @@ export function LiveQueuePage() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Live Queue</h1>
           <p className="text-xs text-muted-foreground">
-            Every finished task, a marble in the jar.
+            Every finished task, a marble — linked to the thread of work it belongs to.
           </p>
         </div>
         {status ? (
@@ -86,16 +97,21 @@ export function LiveQueuePage() {
           </div>
         ) : null}
         {status?.daily?.length ? (
-          <JarStreak daily={status.daily} streakDays={status.streak_days} />
+          <DailyStreak daily={status.daily} streakDays={status.streak_days} />
         ) : null}
       </div>
 
-      {/* Hero: the jar stands on its own — no card chrome around it. */}
-      <div className="relative h-[420px]">
+      {/* Hero: the constellation stands on its own — no card chrome around it. */}
+      <div className="relative h-[460px]">
         {isLoading ? null : marbles.length === 0 ? (
-          <EmptyJarState />
+          <EmptyGraphState />
         ) : (
-          <JarCanvas marbles={marbles} onMarbleClick={openMarble} className="h-full w-full" />
+          <MarbleGraph
+            marbles={marbles}
+            objectiveLabels={objectiveLabels}
+            onMarbleClick={openMarble}
+            className="h-full w-full"
+          />
         )}
       </div>
 

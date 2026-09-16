@@ -76,10 +76,13 @@ interface UiSlice {
   activeMarbleId: string | null;
   openMarble: (id: string | null) => void;
 
-  /** Marbles queued for the jar drop animation, drained by JarCanvas. */
-  jarQueue: Marble[];
-  enqueueMarble: (m: Marble) => void;
-  dequeueMarble: () => Marble | undefined;
+  /**
+   * Marbles pushed by the socket that the constellation has not revealed yet.
+   * The graph drains one every beat so live work arrives as a rhythm.
+   */
+  pendingArrivals: Marble[];
+  enqueueArrival: (m: Marble) => void;
+  dequeueArrival: () => Marble | undefined;
 
   /** Marble currently being dragged onto an objective card. */
   dragMarbleId: string | null;
@@ -102,20 +105,20 @@ export const useUiStore = create<UiSlice>()(
       activeMarbleId: null,
       openMarble: (activeMarbleId) => set({ activeMarbleId }),
 
-      jarQueue: [],
-      enqueueMarble: (m) => {
-        // Defensive dedup: the same marble must never be queued for the jar
+      pendingArrivals: [],
+      enqueueArrival: (m) => {
+        // Defensive dedup: the same marble must never be queued for the reveal
         // animation twice (e.g. if a duplicate socket event arrives).
-        const { jarQueue } = get();
-        if (jarQueue.some((q) => q.id === m.id)) return;
+        const { pendingArrivals } = get();
+        if (pendingArrivals.some((q) => q.id === m.id)) return;
         // Bound the queue so a burst of agent activity cannot grow it forever.
-        const next = [...jarQueue, m];
-        set({ jarQueue: next.length > 50 ? next.slice(-50) : next });
+        const next = [...pendingArrivals, m];
+        set({ pendingArrivals: next.length > 50 ? next.slice(-50) : next });
       },
-      dequeueMarble: () => {
-        const [head, ...rest] = get().jarQueue;
+      dequeueArrival: () => {
+        const [head, ...rest] = get().pendingArrivals;
         if (!head) return undefined;
-        set({ jarQueue: rest });
+        set({ pendingArrivals: rest });
         return head;
       },
 

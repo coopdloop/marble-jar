@@ -27,7 +27,7 @@ auditable.
 | `services/core` | Go (Gin) API + migrations | 8080 |
 | `services/core` dispatch worker | Go, per-integration goroutine pools | 8081 |
 | `services/mcp-bridge` | Python MCP server for agents | 8090 |
-| `apps/web` | React UI (the jar lives here) | 5173 |
+| `apps/web` | React UI (the live marble constellation lives here) | 5173 |
 | `packages/sdk-ts` | TypeScript client, `@marble-jar/client` | — |
 
 ## Where to go next

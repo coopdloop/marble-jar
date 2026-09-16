@@ -2,18 +2,18 @@ import { Flame } from "lucide-react";
 import type { JarDay } from "@/lib/types";
 import { cn, formatCost } from "@/lib/utils";
 
-interface JarStreakProps {
+interface DailyStreakProps {
   daily: JarDay[];
   streakDays: number;
   className?: string;
 }
 
 /**
- * The jar's recent rhythm: a streak badge plus one bar per day. Heights are
- * relative to the busiest day in the window, so the shape is comparable across
- * workspaces of any size.
+ * The constellation's recent rhythm: a streak badge plus one bar per day.
+ * Heights are relative to the busiest day in the window, so the shape is
+ * comparable across workspaces of any size.
  */
-export function JarStreak({ daily, streakDays, className }: JarStreakProps) {
+export function DailyStreak({ daily, streakDays, className }: DailyStreakProps) {
   const max = Math.max(...daily.map((d) => d.marbles), 1);
   const today = daily.length - 1;
 
